@@ -85,6 +85,71 @@ Phrases like:
 **Action:** POST `/commands` with `/mission start <title> --category <cat>` + immediately `/mission complete --duration <dur>` if already done.
 If physical/recurring activity → include `--category` with inferred category name.
 
+### Mission Control (abort / extend / status)
+
+Phrases like:
+- "Stop the current mission", "abort mission", "cancel what I'm doing"
+
+**Action:** POST `/commands` with `/mission abort`
+
+Phrases like:
+- "Give me 30 more minutes", "extend by 1 hour", "need more time on this"
+
+**Extract:** additional duration.
+**Action:** POST `/commands` with `/mission extend <duration>`
+
+Phrases like:
+- "What am I working on?", "how long have I been going?", "mission status"
+
+**Action:** POST `/commands` with `/mission status`
+
+### Habit Tracking
+
+Phrases like:
+- "Log 45 minutes of strength training under exercise"
+- "Add a habit log: 1 hour reading under learning"
+- "I did 30 min meditation (no mission was running)"
+
+**Extract:** category name, activity type, duration, optional note.
+**Action:** POST `/commands` with `/habit log <category> <type> <duration>`
+
+Phrases like:
+- "Show my habit summary", "how consistent have I been?", "7-day habit report"
+
+**Action:** POST `/commands` with `/habit summary`
+
+Phrases like:
+- "Create a new habit category called reading"
+- "Add category: mindfulness"
+
+**Extract:** category name, optional description.
+**Action:** POST `/commands` with `/habit category add <name>`
+
+Phrases like:
+- "What habit categories do I have?", "list my categories"
+
+**Action:** POST `/commands` with `/habit category list`
+
+### Tennis Sessions
+
+Phrases like:
+- "Start a tennis serve session", "begin footwork drill", "starting tennis now"
+- "Tennis rally practice — 1 hour ETA"
+
+**Extract:** session type (`serve`, `footwork`, `rally`, `endurance`, `match`, `other`), optional ETA.
+**Action:** POST `/commands` with `/tennis start <type> [--eta <duration>]`
+
+Phrases like:
+- "Log 45 min tennis serves", "just finished a match", "done with footwork"
+
+**Extract:** session type, duration, optional notes.
+**Action:** POST `/commands` with `/tennis log <type> <duration>`
+
+Phrases like:
+- "Tennis summary", "how much tennis this week?", "show my training breakdown"
+
+**Action:** POST `/commands` with `/tennis summary`
+
 ### Status / Coaching Queries
 
 Phrases like:
@@ -100,6 +165,11 @@ Phrases like:
 Narrate the JSON response in military tone. Lead with the most urgent flag.
 Do not invent numbers — only use what the response contains.
 
+Phrases like:
+- "Show my goals", "goal progress", "how close am I to my milestones?"
+
+**Action:** POST `/commands` with `/status goals`
+
 ### Sleep Logging
 
 Phrases like:
@@ -108,6 +178,11 @@ Phrases like:
 
 **Extract:** duration, optional wake time, optional quality word.
 **Action:** POST `/commands` with `/sleep log <duration> [--quality <q>] [--wake HH:MM]`
+
+Phrases like:
+- "What's my sleep debt?", "am I rested?", "sleep status", "readiness level"
+
+**Action:** POST `/commands` with `/sleep status`
 
 ### Ambiguous Input
 

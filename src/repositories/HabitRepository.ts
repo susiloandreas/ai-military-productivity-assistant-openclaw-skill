@@ -84,6 +84,17 @@ export class HabitRepository {
     return rows;
   }
 
+  /** Returns habit logs created within the last `minutes` minutes. */
+  async getLogsSince(userId: string, minutes: number): Promise<HabitLog[]> {
+    const { rows } = await pool.query<HabitLog>(
+      `SELECT * FROM habit_logs
+       WHERE user_id = $1 AND logged_at >= NOW() - INTERVAL '1 minute' * $2
+       ORDER BY logged_at DESC`,
+      [userId, minutes]
+    );
+    return rows;
+  }
+
   async getWeeklySummary(
     userId: string
   ): Promise<{ habit_category_id: string; name: string; total_minutes: number }[]> {

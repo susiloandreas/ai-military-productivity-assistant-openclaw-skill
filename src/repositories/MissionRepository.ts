@@ -85,6 +85,19 @@ export class MissionRepository {
     return rows;
   }
 
+  /** Returns missions started or completed within the last `minutes` minutes. */
+  async getActivitySince(userId: string, minutes: number): Promise<Mission[]> {
+    const { rows } = await pool.query<Mission>(
+      `SELECT * FROM missions
+       WHERE user_id = $1
+         AND (started_at >= NOW() - INTERVAL '1 minute' * $2
+              OR completed_at >= NOW() - INTERVAL '1 minute' * $2)
+       ORDER BY started_at DESC`,
+      [userId, minutes]
+    );
+    return rows;
+  }
+
   async markEtaExpired(id: string): Promise<void> {
     await pool.query(
       `UPDATE missions SET status = 'eta_expired' WHERE id = $1 AND status = 'active'`,

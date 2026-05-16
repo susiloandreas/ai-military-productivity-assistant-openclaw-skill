@@ -149,9 +149,27 @@ app.get('/notifications/debrief', async (_req: Request, res: Response) => {
  */
 app.get('/notifications/discipline-check', async (_req: Request, res: Response) => {
   try {
-    const score = await disciplineScoreService.calculateAndSave(DEFAULT_USER_ID);
+    const [score, activeMission, recentMissions, recentHabitLogs] = await Promise.all([
+      disciplineScoreService.calculateAndSave(DEFAULT_USER_ID),
+      missionRepo.getActive(DEFAULT_USER_ID),
+      missionRepo.getActivitySince(DEFAULT_USER_ID, 15),
+      habitRepo.getLogsSince(DEFAULT_USER_ID, 15),
+    ]);
+
     const insights = coachingEngine.generate(score);
     const alerts = insights.filter(i => i.severity === 'critical' || i.severity === 'warning');
+
+    // Idle nudge: no active mission and nothing logged in the last 15 minutes
+    const isIdle = !activeMission && recentMissions.length === 0 && recentHabitLogs.length === 0;
+    if (isIdle) {
+      alerts.unshift({
+        rule: 'idle_15min',
+        message: 'IDLE ALERT: No mission active and no activity logged in the past 15 minutes. What is your current objective?',
+        severity: 'warning',
+        category: null,
+      });
+    }
+
     if (alerts.length > 0) {
       const prefix = alerts.some(i => i.severity === 'critical') ? '🚨 DISCIPLINE ALERT' : '⚠ DISCIPLINE WARNING';
       const text = alerts.map(i => i.message).join('\n');

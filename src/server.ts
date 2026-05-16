@@ -151,10 +151,11 @@ app.get('/notifications/discipline-check', async (_req: Request, res: Response) 
   try {
     const score = await disciplineScoreService.calculateAndSave(DEFAULT_USER_ID);
     const insights = coachingEngine.generate(score);
-    const critical = insights.filter(i => i.severity === 'critical');
-    if (critical.length > 0) {
-      const text = critical.map(i => i.message).join('\n');
-      res.json({ message: `⚠ DISCIPLINE ALERT\n\n${text}` });
+    const alerts = insights.filter(i => i.severity === 'critical' || i.severity === 'warning');
+    if (alerts.length > 0) {
+      const prefix = alerts.some(i => i.severity === 'critical') ? '🚨 DISCIPLINE ALERT' : '⚠ DISCIPLINE WARNING';
+      const text = alerts.map(i => i.message).join('\n');
+      res.json({ message: `${prefix}\n\n${text}` });
     } else {
       res.json({ message: null });
     }

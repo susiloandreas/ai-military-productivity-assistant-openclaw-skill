@@ -14,6 +14,20 @@ pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL pool error', err);
 });
 
-export const redisConnection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+// Redis is optional for v1 (used only for BullMQ ETA expiry jobs)
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+
+export const redisConnection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
+  retryStrategy: () => null, // Don't retry — just fail silently
+  enableReadyCheck: false,
+  lazyConnect: true,
+});
+
+redisConnection.on('error', (err) => {
+  console.warn('Redis unavailable (non-critical):', err.message);
+});
+
+redisConnection.connect().catch((err) => {
+  console.warn('Could not connect to Redis:', err.message);
 });

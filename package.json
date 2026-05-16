@@ -4,7 +4,7 @@
   "description": "Military Discipline & Performance Operating System for OpenClaw",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/db/migrations dist/db/",
     "dev": "ts-node --esm src/server.ts",
     "start": "node dist/server.js",
     "migrate": "ts-node --esm src/utils/migrate.ts",

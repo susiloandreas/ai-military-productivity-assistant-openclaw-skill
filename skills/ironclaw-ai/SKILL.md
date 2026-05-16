@@ -102,21 +102,39 @@ Phrases like:
 - "Done with an hour of footwork drills"
 - "Spent 3 hours on the API project"
 - "Completed my morning workout — 45 min"
+- "Baru selesai latihan tenis 90 menit"
+- "Udah kelar ngerjain API 3 jam"
+- "Habis olahraga 45 menit"
 
 **Extract:** activity description, duration, optional category hint.
 **Default duration:** if no duration is mentioned, assume `15m`.
 **Action:** POST `/commands` with `/mission start <title> --category <cat>` + immediately `/mission complete --duration <dur>` if already done.
 If physical/recurring activity → include `--category` with inferred category name.
 
+### Rest / Nap (Istirahat / Tidur Siang)
+
+Phrases like:
+- "mau merem sebentar", "tidur siang dulu", "istirahat bentar"
+- "nap dulu", "mau rehat", "break dulu ya"
+- "mau tidur 20 menit", "merem 15 menit"
+
+**Extract:** duration (default `15m` if not mentioned).
+**Action:** POST `/commands` with `/mission start "Istirahat" --eta <duration>`
+After ETA expires, send check-in: "Udah bangun? Lanjut kerja atau butuh lebih lama?"
+- "udah" / "bangun" → `/mission complete`
+- "extend <durasi>" → `/mission extend <duration>`
+
 ### Mission Control (abort / extend / status)
 
 Phrases like:
 - "Stop the current mission", "abort mission", "cancel what I'm doing"
+- "batalkan misi", "stop sekarang", "hentikan"
 
 **Action:** POST `/commands` with `/mission abort`
 
 Phrases like:
 - "Give me 30 more minutes", "extend by 1 hour", "need more time on this"
+- "tambahin 30 menit lagi", "perpanjang 1 jam", "belum selesai nih"
 
 **Extract:** additional duration.
 **Action:** POST `/commands` with `/mission extend <duration>`
@@ -198,6 +216,9 @@ Phrases like:
 Phrases like:
 - "I slept 7 hours last night, woke at 6:30, quality was good"
 - "Slept poorly, only 5h"
+- "Tadi malam tidur 7 jam, bangun jam 6:30, lumayan"
+- "Tidurnya jelek, cuma 5 jam"
+- "Semalam tidur jam 11, bangun jam 6"
 
 **Extract:** duration, optional wake time, optional quality word.
 **Action:** POST `/commands` with `/sleep log <duration> [--quality <q>] [--wake HH:MM]`
@@ -209,8 +230,8 @@ Phrases like:
 
 ### Ambiguous Input
 
-If intent is unclear (e.g., "log something"), ask **one** clarifying question before calling any endpoint.
-Example: "Was this a tennis session or another activity?"
+If intent is unclear (e.g., "log something", "mau catat sesuatu"), ask **one** clarifying question before calling any endpoint.
+Example: "Was this a tennis session or another activity?" / "Ini sesi tenis atau aktivitas lain?"
 
 ---
 

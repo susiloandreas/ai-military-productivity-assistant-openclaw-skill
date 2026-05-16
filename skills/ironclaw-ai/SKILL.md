@@ -73,7 +73,22 @@ All commands are dispatched via `POST ${IRONCLAW_SERVICE_URL}/commands` with bod
 
 When the user writes in natural language, extract intent and map to the appropriate command.
 
-### Activity / Mission Logging
+### Mission Start (Intent / Commitment)
+
+Phrases like:
+- "I commit to do bug fixing for linear number 123"
+- "Starting work on LINEAR-456"
+- "About to work on ticket 789 — auth service refactor"
+- "Going to fix the login bug now"
+- "I'm taking on the database migration task"
+- "Working on issue #321 for the next 2 hours"
+
+**Extract:** task title (include ticket/issue reference if present), optional ETA, optional category hint.
+**Ticket references:** if user mentions Linear, Jira, GitHub issue, ticket, or number — append it to the title (e.g., `Bug fixing [LINEAR-123]`).
+**Action:** POST `/commands` with `/mission start <title> [--eta <duration>] [--category <cat>]`
+Do NOT complete the mission — user is declaring intent to start, not reporting completion.
+
+### Activity / Mission Logging (Completed)
 
 Phrases like:
 - "I just finished 90 minutes of tennis serves"

@@ -85,8 +85,15 @@ Phrases like:
 
 **Extract:** task title (include ticket/issue reference if present), optional ETA, optional category hint.
 **Ticket references:** if user mentions Linear, Jira, GitHub issue, ticket, or number — append it to the title (e.g., `Bug fixing [LINEAR-123]`).
-**Action:** POST `/commands` with `/mission start <title> [--eta <duration>] [--category <cat>]`
+**Default ETA:** if no duration is mentioned, always use `--eta 15m`.
+**Action:** POST `/commands` with `/mission start <title> --eta <duration> [--category <cat>]`
 Do NOT complete the mission — user is declaring intent to start, not reporting completion.
+
+**Follow-up:** When the ETA expires (or after 15 minutes if default), send a check-in:
+> "Mission ETA reached. Did you complete **<title>**? Reply: ✅ done / ⏱ extend <duration> / ❌ abort"
+- "done" → `/mission complete`
+- "extend <duration>" → `/mission extend <duration>`
+- "abort" → `/mission abort`
 
 ### Activity / Mission Logging (Completed)
 
@@ -97,6 +104,7 @@ Phrases like:
 - "Completed my morning workout — 45 min"
 
 **Extract:** activity description, duration, optional category hint.
+**Default duration:** if no duration is mentioned, assume `15m`.
 **Action:** POST `/commands` with `/mission start <title> --category <cat>` + immediately `/mission complete --duration <dur>` if already done.
 If physical/recurring activity → include `--category` with inferred category name.
 

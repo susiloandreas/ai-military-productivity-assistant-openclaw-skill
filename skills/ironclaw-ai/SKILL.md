@@ -73,7 +73,29 @@ All commands are dispatched via `POST ${IRONCLAW_SERVICE_URL}/commands` with bod
 
 When the user writes in natural language, extract intent and map to the appropriate command.
 
+### Quick Trigger Reference (for lightweight models)
+
+Use this table FIRST before reading detailed sections below.
+
+| User says | Command |
+|---|---|
+| "X menit ke depan akan [Y]" | `/mission start "[Y]" --eta Xm` |
+| "X menit lagi [Y]" | `/mission start "[Y]" --eta Xm` |
+| "mau [Y] X menit lagi" | `/mission start "[Y]" --eta Xm` |
+| "sejam ke depan akan [Y]" | `/mission start "[Y]" --eta 1h` |
+| "mulai [Y] sekarang" | `/mission start "[Y]" --eta 15m` |
+| "commit ngerjain [Y]" | `/mission start "[Y]" --eta 15m` |
+| "selesai / baru kelar [Y] X menit/jam" | `/mission start "[Y]"` + `/mission complete --duration X` |
+| "mau merem / tidur siang X menit" | `/mission start "Istirahat" --eta Xm` |
+| "abort / batalkan / stop misi" | `/mission abort` |
+| "tambahin X menit" | `/mission extend Xm` |
+| "tidur X jam, bangun jam HH:MM" | `/sleep log Xh --wake HH:MM` |
+
+
+
 ### Mission Start (Intent / Commitment)
+
+Trigger this whenever the user declares they are **about to do something** or **commits to a time-bound activity** — including travel, errands, rest, or work.
 
 Phrases like:
 - "I commit to do bug fixing for linear number 123"
@@ -82,6 +104,24 @@ Phrases like:
 - "Going to fix the login bug now"
 - "I'm taking on the database migration task"
 - "Working on issue #321 for the next 2 hours"
+
+**Indonesian future-time commitment patterns — ALWAYS trigger mission start:**
+- "50 menit ke depan akan pulang" → `/mission start "Pulang" --eta 50m`
+- "30 menit lagi pulang" → `/mission start "Pulang" --eta 30m`
+- "mau pulang sejam lagi" → `/mission start "Pulang" --eta 1h`
+- "sejam ke depan akan meeting" → `/mission start "Meeting" --eta 1h`
+- "15 menit lagi mau makan siang" → `/mission start "Makan siang" --eta 15m`
+- "mau berangkat 20 menit lagi" → `/mission start "Berangkat" --eta 20m`
+- "bakal mulai kerja sejam ke depan" → `/mission start "Kerja" --eta 1h`
+- Pattern: **"[durasi] ke depan akan/mau/bakal [aktivitas]"** → extract duration + activity title
+
+**Key rule:** If the user says they will do something in N minutes/hours — regardless of whether it is work, travel, rest, or anything else — create a mission with that ETA. Do NOT skip this because the activity seems non-work-related.
+
+**Duration parsing for Indonesian:**
+- "X menit ke depan" / "X menit lagi" → `--eta Xm`
+- "sejam ke depan" / "sejam lagi" → `--eta 1h`
+- "X jam ke depan" / "X jam lagi" → `--eta Xh`
+- "X jam Y menit" → `--eta XhYm`
 
 **Extract:** task title (include ticket/issue reference if present), optional ETA, optional category hint.
 **Ticket references:** if user mentions Linear, Jira, GitHub issue, ticket, or number — append it to the title (e.g., `Bug fixing [LINEAR-123]`).
@@ -96,7 +136,7 @@ Do NOT complete the mission — user is declaring intent to start, not reporting
 - "abort" → `/mission abort`
 
 ### Activity / Mission Logging (Completed)
-
+o
 Phrases like:
 - "I just finished 90 minutes of tennis serves"
 - "Done with an hour of footwork drills"

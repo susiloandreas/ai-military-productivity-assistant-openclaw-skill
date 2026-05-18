@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS discipline_scores (
+qCREATE TABLE IF NOT EXISTS discipline_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   score INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),

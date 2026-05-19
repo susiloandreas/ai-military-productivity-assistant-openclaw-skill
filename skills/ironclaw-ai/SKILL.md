@@ -1,9 +1,181 @@
 ---
 name: ironclaw-ai
 description: Military Discipline & Performance Operating System. Tracks missions, habits, goals, tennis training, sleep, and discipline scores. Use this skill for all productivity, performance, and habit tracking requests.
+
+# Routing Metadata
+keywords:
+  # Core concepts
+  - mission
+  - misi
+  - task
+  - tugas
+  - goal
+  - tujuan
+  - habit
+  - kebiasaan
+  - tracking
+  - pelacakan
+  
+  # Discipline & Performance
+  - discipline
+  - disiplin
+  - score
+  - skor
+  - productivity
+  - produktivitas
+  - performance
+  - performa
+  - coaching
+  - pelatihan
+  - briefing
+  - debrief
+  
+  # Activity Types
+  - tennis
+  - tenis
+  - sleep
+  - tidur
+  - merem
+  - istirahat
+  - rest
+  - break
+  - nap
+  - exercise
+  - olahraga
+  - workout
+  - training
+  - latihan
+  - reading
+  - membaca
+  - meditation
+  - meditasi
+  - work
+  - kerja
+  - ngerjain
+  - coding
+  - kode
+  - study
+  - belajar
+  
+  # Time References
+  - menit
+  - jam
+  - minutes
+  - hours
+  - duration
+  - durasi
+  - eta
+  - timer
+  - tenggat
+  - deadline
+  
+  # Status Keywords
+  - status
+  - progress
+  - progres
+  - complete
+  - selesai
+  - done
+  - kelar
+  - finish
+  - habis
+  - abort
+  - batalkan
+  - cancel
+  - extend
+  - tambah
+  - perpanjang
+  - active
+  - aktif
+  - running
+  - berjalan
+
+invocationPatterns:
+  # Indonesian time + activity patterns
+  - "menit ke depan akan"
+  - "menit lagi"
+  - "jam ke depan"
+  - "jam lagi"
+  - "mau .* menit"
+  - "bakal .* jam"
+  - "akan .* dalam"
+  
+  # Completion patterns
+  - "sudah selesai"
+  - "baru selesai"
+  - "udah kelar"
+  - "habis .* menit"
+  - "selesai .* jam"
+  - "done"
+  - "complete"
+  
+  # Query patterns
+  - "mission status"
+  - "status misi"
+  - "how am i doing"
+  - "gimana progres"
+  - "briefing"
+  - "score"
+  - "skor"
+  - "discipline"
+  - "disiplin"
+  - "active mission"
+  - "misi aktif"
+  
+  # Control patterns
+  - "abort mission"
+  - "extend"
+  - "perpanjang"
+  - "tambah menit"
+  - "stop"
+  - "cancel"
+  
+  # Activity logging
+  - "log .* minutes"
+  - "catat .* menit"
+  - "habit log"
+  - "tennis.*serve"
+  - "tennis.*footwork"
+  - "slept .* hours"
+  - "tidur .* jam"
+  - "wake.*time"
+
+domains:
+  - productivity
+  - performance
+  - habit-tracking
+  - goal-setting
+  - fitness
+  - sleep
+  - discipline
+  - time-management
+  - coaching
+
+languages:
+  - en
+  - id
+
+supportsLanguages: true
+requiresAuthentication: false
 ---
 
 # IronClaw AI — Skill Instructions
+
+## CRITICAL: Always Call the API
+ 
+**NEVER narrate or simulate a command. ALWAYS call the API.**
+ 
+When intent matches any command in this skill:
+1. Call `POST ${IRONCLAW_SERVICE_URL}/commands` immediately with body `{ "command": "<slash command>" }`
+2. Show the API response to the user
+3. Do NOT write to memory files instead of calling the API
+4. Do NOT say "saya sudah mencatat" or simulate the result — the API is the system of record
+5. Do NOT use `<final>` tags or narrate what you "would" do
+If `IRONCLAW_SERVICE_URL` is not set, stop and tell the user:
+> "IRONCLAW_SERVICE_URL belum dikonfigurasi di environment variables."
+ 
+---
+
 
 ## Overview
 
@@ -87,6 +259,7 @@ Use this table FIRST before reading detailed sections below.
 | "commit ngerjain [Y]" | `/mission start "[Y]" --eta 15m` |
 | "selesai / baru kelar [Y] X menit/jam" | `/mission start "[Y]"` + `/mission complete --duration X` |
 | "mau merem / tidur siang X menit" | `/mission start "Istirahat" --eta Xm` |
+| "misi sudah selesai / sudah selesai / baru selesai / udah kelar" | `/mission complete` |
 | "abort / batalkan / stop misi" | `/mission abort` |
 | "tambahin X menit" | `/mission extend Xm` |
 | "tidur X jam, bangun jam HH:MM" | `/sleep log Xh --wake HH:MM` |
@@ -135,9 +308,26 @@ Do NOT complete the mission — user is declaring intent to start, not reporting
 - "extend <duration>" → `/mission extend <duration>`
 - "abort" → `/mission abort`
 
-### Activity / Mission Logging (Completed)
-o
+### Active Mission Completion
+
+Trigger when the user **reports that their active mission is done** — with or without actual duration.
+
 Phrases like:
+- "Mission complete", "Done", "Finished"
+- "Misi saya sudah selesai", "Sudah selesai", "Baru selesai"
+- "Udah kelar", "Habis", "Selesai"
+- "I'm done", "That's it"
+
+**Extract:** optional actual duration (if user specifies how long they actually worked).
+**Action:** POST `/commands` with `/mission complete [--duration <actual>]`
+Do NOT retroactively start a mission — only complete the active one.
+If no duration is mentioned, the API will auto-calculate based on elapsed time since mission start.
+
+**Key rule:** If there IS an active mission and the user says they're done, IMMEDIATELY call `/mission complete`. Do not ask for confirmation.
+
+### Activity / Mission Logging (Completed)
+
+For retroactive logging when NO mission was active. Phrases like:
 - "I just finished 90 minutes of tennis serves"
 - "Done with an hour of footwork drills"
 - "Spent 3 hours on the API project"
@@ -267,6 +457,24 @@ Phrases like:
 - "What's my sleep debt?", "am I rested?", "sleep status", "readiness level"
 
 **Action:** POST `/commands` with `/sleep status`
+
+### Command Errors & Recovery
+
+When the API response `output` starts with `⚠ OPERATION FAILED`, a command did not execute. Apply the following recovery logic:
+
+| Error message contains | Likely cause | Recovery action |
+|---|---|---|
+| `No active mission` | `/mission complete`, `abort`, `extend`, or `status` called with no running mission | Inform user: "Tidak ada misi aktif. Mulai dulu dengan `/mission start <judul>`." |
+| `Mission title required` | `/mission start` called without a title | Re-ask for mission title, then retry |
+| `Duration required` | `/mission extend` called without a duration | Re-ask for duration (e.g., "Berapa lama perpanjangannya?") |
+| `Unknown subcommand` | Typo or unsupported subcommand | Show correct subcommands for that root (e.g., `/mission start | complete | abort | extend | status`) |
+| `Unknown command` | Root command not recognized | List available roots: `/mission`, `/habit`, `/tennis`, `/sleep`, `/status` |
+| `Internal server error` | Server-side crash | Tell user: "Server sedang bermasalah. Coba lagi dalam beberapa detik." Do NOT retry automatically. |
+| Any other message | Domain validation error | Echo the error message verbatim in military tone, then suggest the correct command syntax |
+
+**General rule:** Never silently swallow an error. Always surface the failure to the user with a single clear sentence, then offer the correct syntax or next step.
+
+**Health check:** If multiple commands in a row fail with `Internal server error`, run `GET ${IRONCLAW_SERVICE_URL}/health` and report the result to the user.
 
 ### Ambiguous Input
 

@@ -576,3 +576,88 @@ GET ${IRONCLAW_SERVICE_URL}/coaching/insights?category=tennis
 ```
 
 Returns the top 3 coaching insights for the requested category based on the current discipline score.
+
+---
+
+## Learning Resources & References
+
+The IronClaw AI system is built on principles from the following domains. Study these resources to deepen your understanding:
+
+### Productivity & Time Management
+
+| Book | Author | Relevance |
+|---|---|---|
+| **Atomic Habits** | James Clear | Foundation for habit tracking and compounding small actions → discipline score |
+| **Deep Work** | Cal Newport | Mission design: focused time blocks with clear intent and ETA |
+| **The 4-Hour Workweek** | Tim Ferriss | Time blocking and batch processing (mission categories) |
+| **Essentialism** | Greg McKeown | Prioritization within goals and milestones |
+
+### Goal Setting & Performance
+
+| Book | Author | Relevance |
+|---|---|---|
+| **Measure What Matters (OKRs)** | John Doerr | Goal structure with milestones and final exams |
+| **The Goal** | Eliyahu M. Goldratt | Theory of Constraints applied to mission workflow |
+| **Man's Search for Meaning** | Viktor Frankl | Discipline through purpose and commitment |
+
+### Sleep & Wellness
+
+| Book | Author | Relevance |
+|---|---|---|
+| **Why We Sleep** | Matthew Walker | Sleep logging and readiness scoring foundations |
+| **The Circadian Code** | Satchin Panda | Sleep-discipline interconnection |
+
+### Military Discipline & Leadership
+
+| Book | Author | Relevance |
+|---|---|---|
+| **Extreme Ownership** | Jocko Willink | Command tone, accountability, mission briefing/debrief model |
+| **Discipline Equals Freedom** | Jocko Willink | Core philosophy behind discipline score |
+| **The Daily Stoic** | Ryan Holiday | Resilience when missions fail (abort recovery) |
+| **Art of War** | Sun Tzu | Strategic thinking for goal prioritization |
+
+### Sports Training & Performance (Tennis Focus)
+
+| Book | Author | Relevance |
+|---|---|---|
+| **The Inner Game of Tennis** | W. Timothy Gallwey | Mental discipline and session types (serve, footwork, rally) |
+| **Talent is Overrated** | Geoff Colvin | Deliberate practice logging and progress tracking |
+| **Peak Performance** | Brad Stulberg & Steve Magness | Recovery, readiness, and pacing between missions |
+
+### Coaching & Mentorship
+
+| Book | Author | Relevance |
+|---|---|---|
+| **The Coaching Habit** | Michael Bungay Stanier | Questioning model for check-ins on mission completion |
+| **Dare to Lead** | Brené Brown | Vulnerability in debrief sessions and feedback |
+
+### Quantification & Metrics
+
+| Book | Author | Relevance |
+|---|---|---|
+| **Quantified Self** | Gary Wolf | Tracking philosophy: what gets measured gets managed |
+| **The Signal and the Noise** | Nate Silver | Data interpretation for discipline score trends |
+
+---
+
+## Key Principles You'll Learn
+
+After studying these resources, you'll understand:
+
+1. **Mission Design** (Deep Work, Atomic Habits) — why small, focused blocks compound into discipline
+2. **Goal Architecture** (OKRs, The Goal) — how milestones scaffold toward final exams
+3. **Habit Automation** (Atomic Habits) — why tracking beats willpower
+4. **Sleep Integration** (Why We Sleep) — why readiness impacts next mission
+5. **Accountability** (Extreme Ownership) — why debrief is non-negotiable
+6. **Deliberate Practice** (Talent is Overrated) — why session type matters for tennis goals
+7. **Stoic Resilience** (The Daily Stoic) — how to recover after mission abort
+8. **Recovery & Pacing** (Peak Performance) — why extend > abort > restart
+
+---
+
+## Language Support
+
+**Bahasa Indonesia** resources:
+- "Atomic Habits" (terjemahan: "Kebiasaan Minimal")
+- "Extreme Ownership" tersedia dalam Bahasa Indonesia
+- Military discipline philosophy aligns with Indonesian *disiplin* and *tanggung jawab*

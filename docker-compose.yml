@@ -6,6 +6,21 @@ services:
     environment:
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  eta-worker:
+    build: .
+    command: ["node", "dist/schedulers/EtaExpiryWorker.js"]
+    environment:
+      DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
     depends_on:
       postgres:
         condition: service_healthy

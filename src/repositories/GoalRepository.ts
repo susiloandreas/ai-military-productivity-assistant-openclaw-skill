@@ -100,14 +100,13 @@ export class GoalRepository {
     goalId: string,
     valueDelta: number,
     unit: string,
-    sourceMissionId: string | null,
-    sourceHabitLogId: string | null
+    sourceMissionId: string | null
   ): Promise<GoalProgressLog> {
     const { rows } = await pool.query<GoalProgressLog>(
       `INSERT INTO goal_progress_logs
-         (goal_id, value_delta, unit, source_mission_id, source_habit_log_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [goalId, valueDelta, unit, sourceMissionId, sourceHabitLogId]
+         (goal_id, value_delta, unit, source_mission_id)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [goalId, valueDelta, unit, sourceMissionId]
     );
     return rows[0];
   }

@@ -1,5 +1,4 @@
 import { HabitService } from '../services/HabitService';
-import { ProgressResult } from '../services/GoalService';
 import { formatSuccess, formatError, formatBlock } from '../utils/formatter';
 import { formatMinutes } from '../utils/duration';
 import { parseTimeOfDay, parseDaysOfWeek, formatDaysOfWeek } from '../utils/schedule';
@@ -7,11 +6,12 @@ import { parseTimeOfDay, parseDaysOfWeek, formatDaysOfWeek } from '../utils/sche
 /**
  * /habit category add <name> [--desc <description>]
  * /habit category list
- * /habit log <category> <type> <duration> [--note <text>]
  * /habit goal set <category> <type> <target> [--deadline YYYY-MM-DD]
  * /habit schedule add <category> <type> <time> <days> [--grace <minutes>]
  * /habit schedule list
  * /habit summary
+ *
+ * Retroactive activity logging moved to `/mission log`.
  */
 export async function handleHabitCommand(
   args: string[],
@@ -41,31 +41,6 @@ export async function handleHabitCommand(
           );
         }
         return formatError('Usage: /habit category add <name> | /habit category list');
-      }
-
-      case 'log': {
-        // /habit log <category> <type> <duration> [--note <text>]
-        const rest = args.slice(1);
-        const note = extractFlag(rest, '--note');
-        const [categoryName, habitTypeName, durationStr] = rest;
-        if (!categoryName || !habitTypeName || !durationStr) {
-          return formatError('Usage: /habit log <category> <type> <duration>');
-        }
-        const { habitLog, goalProgress, habitGoalProgress } = await service.logRetroactive(
-          userId,
-          categoryName,
-          habitTypeName,
-          durationStr,
-          note ?? undefined
-        );
-        const lines = [
-          `Category: ${categoryName}`,
-          `Type: ${habitTypeName}`,
-          `Duration: ${formatMinutes(habitLog.duration_minutes)}`,
-        ];
-        appendGoalProgress(lines, `${habitTypeName} goal`, habitGoalProgress);
-        appendGoalProgress(lines, `${categoryName} goal`, goalProgress);
-        return formatSuccess('HABIT LOGGED', lines);
       }
 
       case 'goal': {
@@ -169,26 +144,12 @@ export async function handleHabitCommand(
 
       default:
         return formatError(
-          'Usage: /habit category | /habit log | /habit goal | /habit schedule | /habit summary'
+          'Usage: /habit category | /habit goal | /habit schedule | /habit summary'
         );
     }
   } catch (err) {
     return formatError((err as Error).message);
   }
-}
-
-/** Append goal-progress lines (delta, total, milestones) for one advanced goal. */
-function appendGoalProgress(
-  lines: string[],
-  label: string,
-  progress: ProgressResult | null
-): void {
-  if (!progress) return;
-  lines.push(`${label}: +${progress.progressLog.value_delta}min (total ${progress.totalProgress}min)`);
-  for (const m of progress.milestonesUnlocked) {
-    lines.push(`MILESTONE UNLOCKED: ${m.title}`);
-  }
-  if (progress.goalCompleted) lines.push(`GOAL ACHIEVED: ${label}`);
 }
 
 function extractFlag(args: string[], flag: string): string | null {

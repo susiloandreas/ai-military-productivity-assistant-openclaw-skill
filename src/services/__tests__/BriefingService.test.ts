@@ -109,7 +109,7 @@ describe('BriefingService', () => {
   it('shows active mission when one exists', async () => {
     missionService.getActiveMission.mockResolvedValue({
       id: 'mission-1', user_id: 'user-1', title: 'Write Code',
-      habit_category_id: null, eta_minutes: 60, status: 'active',
+      habit_category_id: null, habit_type_id: null, eta_minutes: 60, mode: 'live', status: 'active',
       started_at: new Date(Date.now() - 30 * 60_000),
       completed_at: null, paused_at: null, actual_duration_minutes: null,
       notes: null, created_at: new Date(),

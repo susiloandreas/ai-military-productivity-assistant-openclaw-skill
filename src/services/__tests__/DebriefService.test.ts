@@ -28,7 +28,7 @@ const makeScore = (): DisciplineScore => ({
 
 const makeMission = (overrides: Partial<Mission> = {}): Mission => ({
   id: 'mission-1', user_id: 'user-1', title: 'Write report',
-  habit_category_id: null, eta_minutes: 60, status: 'completed',
+  habit_category_id: null, habit_type_id: null, eta_minutes: 60, mode: 'live', status: 'completed',
   started_at: new Date(), completed_at: new Date(), paused_at: null,
   actual_duration_minutes: 55, notes: null, created_at: new Date(),
   ...overrides,

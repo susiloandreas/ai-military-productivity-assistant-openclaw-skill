@@ -6,12 +6,37 @@ export class MissionRepository {
     userId: string,
     title: string,
     habitCategoryId: string | null,
-    etaMinutes: number | null
+    etaMinutes: number | null,
+    habitTypeId: string | null = null
   ): Promise<Mission> {
     const { rows } = await pool.query<Mission>(
-      `INSERT INTO missions (user_id, title, habit_category_id, eta_minutes)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, title, habitCategoryId, etaMinutes]
+      `INSERT INTO missions (user_id, title, habit_category_id, habit_type_id, eta_minutes, mode)
+       VALUES ($1, $2, $3, $4, $5, 'live') RETURNING *`,
+      [userId, title, habitCategoryId, habitTypeId, etaMinutes]
+    );
+    return rows[0];
+  }
+
+  /**
+   * A retroactive mission: an activity that already happened, recorded after the fact.
+   * Created already 'completed' so it advances goals and counts toward habit adherence,
+   * but never enters the live timer / ETA-expiry flow.
+   */
+  async createRetroactive(
+    userId: string,
+    title: string,
+    habitCategoryId: string,
+    habitTypeId: string,
+    durationMinutes: number,
+    note: string | null
+  ): Promise<Mission> {
+    const { rows } = await pool.query<Mission>(
+      `INSERT INTO missions
+         (user_id, title, habit_category_id, habit_type_id, status, mode,
+          completed_at, actual_duration_minutes, notes)
+       VALUES ($1, $2, $3, $4, 'completed', 'retroactive', NOW(), $5, $6)
+       RETURNING *`,
+      [userId, title, habitCategoryId, habitTypeId, durationMinutes, note]
     );
     return rows[0];
   }
@@ -103,5 +128,35 @@ export class MissionRepository {
       `UPDATE missions SET status = 'eta_expired' WHERE id = $1 AND status = 'active'`,
       [id]
     );
+  }
+
+  /** Habit type ids the user has logged a mission for on or after `since` (used for "logged today"). */
+  async getHabitTypeIdsLoggedSince(userId: string, since: Date): Promise<string[]> {
+    const { rows } = await pool.query<{ habit_type_id: string }>(
+      `SELECT DISTINCT habit_type_id FROM missions
+       WHERE user_id = $1 AND habit_type_id IS NOT NULL
+         AND (started_at >= $2 OR completed_at >= $2)`,
+      [userId, since]
+    );
+    return rows.map(r => r.habit_type_id);
+  }
+
+  /** 7-day total of retroactively-logged minutes per habit category (drives /habit summary). */
+  async getWeeklyCategorySummary(
+    userId: string
+  ): Promise<{ habit_category_id: string; name: string; total_minutes: number }[]> {
+    const { rows } = await pool.query(
+      `SELECT hc.id AS habit_category_id, hc.name,
+              COALESCE(SUM(m.actual_duration_minutes), 0) AS total_minutes
+       FROM habit_categories hc
+       LEFT JOIN missions m ON m.habit_category_id = hc.id
+         AND m.mode = 'retroactive'
+         AND m.completed_at >= NOW() - INTERVAL '7 days'
+       WHERE hc.user_id = $1
+       GROUP BY hc.id, hc.name
+       ORDER BY hc.name`,
+      [userId]
+    );
+    return rows;
   }
 }

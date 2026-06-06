@@ -45,11 +45,11 @@ const coachingRepo     = new CoachingRepository();
 
 const goalService      = new GoalService(goalRepo, habitRepo);
 const missionService   = new MissionService(missionRepo, goalRepo, habitRepo, goalService);
-const habitService     = new HabitService(habitRepo, goalRepo, goalService);
+const habitService     = new HabitService(habitRepo, missionRepo, goalService);
 const tennisService    = new TennisService(tennisRepo, missionService);
 const sleepService     = new SleepService(sleepRepo);
 
-const analyzer         = new PerformanceAnalyzer(missionRepo, habitRepo, goalRepo, sleepRepo);
+const analyzer         = new PerformanceAnalyzer(missionRepo, goalRepo, sleepRepo);
 const disciplineScoreService = new DisciplineScoreService(disciplineRepo, analyzer);
 const coachingEngine   = new CoachingEngine(coachingRepo);
 const debriefService   = new DebriefService(
@@ -149,18 +149,18 @@ app.get('/notifications/debrief', async (_req: Request, res: Response) => {
  */
 app.get('/notifications/discipline-check', async (_req: Request, res: Response) => {
   try {
-    const [score, activeMission, recentMissions, recentHabitLogs] = await Promise.all([
+    const [score, activeMission, recentMissions] = await Promise.all([
       disciplineScoreService.calculateAndSave(DEFAULT_USER_ID),
       missionRepo.getActive(DEFAULT_USER_ID),
       missionRepo.getActivitySince(DEFAULT_USER_ID, 15),
-      habitRepo.getLogsSince(DEFAULT_USER_ID, 15),
     ]);
 
     const insights = coachingEngine.generate(score);
     const alerts = insights.filter(i => i.severity === 'critical' || i.severity === 'warning');
 
-    // Idle nudge: no active mission and nothing logged in the last 15 minutes
-    const isIdle = !activeMission && recentMissions.length === 0 && recentHabitLogs.length === 0;
+    // Idle nudge: no active mission and nothing logged in the last 15 minutes.
+    // getActivitySince covers retroactive (habit) logs too, since they are missions now.
+    const isIdle = !activeMission && recentMissions.length === 0;
     if (isIdle) {
       alerts.unshift({
         rule: 'idle_15min',

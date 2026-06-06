@@ -12,6 +12,14 @@ export interface MissionCompleteResult {
   goalProgress: ProgressResult | null;
 }
 
+export interface RetroactiveLogResult {
+  mission: Mission;
+  /** Progress on the goal tied to this specific habit type, if one is active. */
+  habitGoalProgress: ProgressResult | null;
+  /** Progress on the category-level (aggregate) goal, if one is active. */
+  goalProgress: ProgressResult | null;
+}
+
 export class MissionService {
   private etaQueue: Queue;
 
@@ -81,21 +89,74 @@ export class MissionService {
       notes: notes ?? undefined,
     });
 
+    const { goalProgress } = await this.advanceGoals(mission, actualDuration);
+    return { mission: completed, goalProgress };
+  }
+
+  /**
+   * Record an activity that already happened (no live timer was running) as a
+   * 'retroactive', already-completed mission, then advance any goals it feeds.
+   */
+  async logRetroactive(
+    userId: string,
+    categoryName: string,
+    habitTypeName: string,
+    durationStr: string,
+    note: string | null
+  ): Promise<RetroactiveLogResult> {
+    const category = await this.habitRepo.getCategoryByName(userId, categoryName);
+    if (!category) throw new Error(`Category "${categoryName}" not found.`);
+
+    const habitType = await this.habitRepo.upsertHabitType(category.id, habitTypeName);
+    const durationMinutes = parseDurationToMinutes(durationStr);
+    const mission = await this.missionRepo.createRetroactive(
+      userId,
+      habitTypeName,
+      category.id,
+      habitType.id,
+      durationMinutes,
+      note
+    );
+
+    const { habitGoalProgress, goalProgress } = await this.advanceGoals(mission, durationMinutes);
+    return { mission, habitGoalProgress, goalProgress };
+  }
+
+  /**
+   * Advance the goal tied to this mission's habit type (e.g. a "running" goal) and
+   * the broader category-level goal, if either is active.
+   */
+  private async advanceGoals(
+    mission: Mission,
+    durationMinutes: number
+  ): Promise<{ habitGoalProgress: ProgressResult | null; goalProgress: ProgressResult | null }> {
+    let habitGoalProgress: ProgressResult | null = null;
+    if (mission.habit_type_id) {
+      const habitGoal = await this.goalRepo.getActiveByHabitType(mission.habit_type_id);
+      if (habitGoal) {
+        habitGoalProgress = await this.goalService.logProgress(
+          habitGoal.id,
+          durationMinutes,
+          'minutes',
+          mission.id
+        );
+      }
+    }
+
     let goalProgress: ProgressResult | null = null;
     if (mission.habit_category_id) {
       const goal = await this.goalRepo.getActiveByCategory(mission.habit_category_id);
       if (goal) {
         goalProgress = await this.goalService.logProgress(
           goal.id,
-          actualDuration,
+          durationMinutes,
           'minutes',
-          mission.id,
-          null
+          mission.id
         );
       }
     }
 
-    return { mission: completed, goalProgress };
+    return { habitGoalProgress, goalProgress };
   }
 
   async abort(userId: string): Promise<Mission> {

@@ -198,8 +198,9 @@ All commands are dispatched via `POST ${IRONCLAW_SERVICE_URL}/commands` with bod
 
 | Command | Description |
 |---|---|
-| `/mission start <title> [--eta <duration>] [--category <name>]` | Start a new mission. ETA triggers expiry alert. Category links to goal. |
+| `/mission start <title> [--eta <duration>] [--category <name>]` | Start a new (live) mission. ETA triggers expiry alert. Category links to goal. |
 | `/mission complete [--duration <actual>] [--notes <text>]` | Complete active mission. Auto-advances linked goal. |
+| `/mission log <category> <type> <duration> [--note <text>]` | Retroactive activity log (use when no live mission was started). Auto-advances linked goals. |
 | `/mission abort` | Abandon the active mission (marks as failed). |
 | `/mission extend <duration>` | Add time to the ETA (resets expiry timer). |
 | `/mission status` | Show active mission with elapsed time and ETA. |
@@ -212,7 +213,6 @@ All commands are dispatched via `POST ${IRONCLAW_SERVICE_URL}/commands` with bod
 |---|---|
 | `/habit category add <name> [--desc <text>]` | Create a habit category. |
 | `/habit category list` | List all categories. |
-| `/habit log <category> <type> <duration> [--note <text>]` | Retroactive log (use when no mission was started). |
 | `/habit summary` | 7-day summary per category. |
 
 ### Tennis Commands
@@ -337,10 +337,11 @@ For retroactive logging when NO mission was active. Phrases like:
 - "Udah kelar ngerjain API 3 jam"
 - "Habis olahraga 45 menit"
 
-**Extract:** activity description, duration, optional category hint.
+**Extract:** activity description, duration, optional category + type hint.
 **Default duration:** if no duration is mentioned, assume `15m`.
-**Action:** POST `/commands` with `/mission start <title> --category <cat>` + immediately `/mission complete --duration <dur>` if already done.
-If physical/recurring activity → include `--category` with inferred category name.
+**Action:**
+- If it is a recurring/habit activity with an inferable category + type (e.g. exercise/running, learning/reading), POST `/commands` with `/mission log <category> <type> <duration>` — a single retroactive mission.
+- Otherwise (generic one-off work already finished), POST `/mission start <title>` then immediately `/mission complete --duration <dur>`.
 
 ### Rest / Nap (Istirahat / Tidur Siang)
 
@@ -383,7 +384,8 @@ Phrases like:
 - "I did 30 min meditation (no mission was running)"
 
 **Extract:** category name, activity type, duration, optional note.
-**Action:** POST `/commands` with `/habit log <category> <type> <duration>`
+**Action:** POST `/commands` with `/mission log <category> <type> <duration>`
+(Retroactive activity logging is now a mission — there is no separate `/habit log`.)
 
 Phrases like:
 - "Show my habit summary", "how consistent have I been?", "7-day habit report"
@@ -468,7 +470,7 @@ When the API response `output` starts with `⚠ OPERATION FAILED`, a command did
 | `No active mission` | `/mission complete`, `abort`, `extend`, or `status` called with no running mission | Inform user: "Tidak ada misi aktif. Mulai dulu dengan `/mission start <judul>`." |
 | `Mission title required` | `/mission start` called without a title | Re-ask for mission title, then retry |
 | `Duration required` | `/mission extend` called without a duration | Re-ask for duration (e.g., "Berapa lama perpanjangannya?") |
-| `Unknown subcommand` | Typo or unsupported subcommand | Show correct subcommands for that root (e.g., `/mission start | complete | abort | extend | status`) |
+| `Unknown subcommand` | Typo or unsupported subcommand | Show correct subcommands for that root (e.g., `/mission start | complete | log | abort | extend | status`) |
 | `Unknown command` | Root command not recognized | List available roots: `/mission`, `/habit`, `/tennis`, `/sleep`, `/status` |
 | `Internal server error` | Server-side crash | Tell user: "Server sedang bermasalah. Coba lagi dalam beberapa detik." Do NOT retry automatically. |
 | Any other message | Domain validation error | Echo the error message verbatim in military tone, then suggest the correct command syntax |

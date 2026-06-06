@@ -41,22 +41,13 @@ export interface Milestone {
   created_at: Date;
 }
 
-// ── Habit Types & Logs ─────────────────────────────────────────────────────
+// ── Habit Types ────────────────────────────────────────────────────────────
 export interface HabitType {
   id: string;
   habit_category_id: string;
   name: string;
   unit: string;
   created_at: Date;
-}
-
-export interface HabitLog {
-  id: string;
-  habit_type_id: string;
-  user_id: string;
-  duration_minutes: number;
-  logged_at: Date;
-  note: string | null;
 }
 
 // ── Habit Schedules ────────────────────────────────────────────────────────
@@ -83,7 +74,6 @@ export interface GoalProgressLog {
   id: string;
   goal_id: string;
   source_mission_id: string | null;
-  source_habit_log_id: string | null;
   value_delta: number;
   unit: string;
   logged_at: Date;
@@ -92,12 +82,17 @@ export interface GoalProgressLog {
 // ── Missions ───────────────────────────────────────────────────────────────
 export type MissionStatus = 'active' | 'completed' | 'paused' | 'failed' | 'eta_expired';
 
+// 'live' — the start → complete timer; 'retroactive' — an activity logged after the fact.
+export type MissionMode = 'live' | 'retroactive';
+
 export interface Mission {
   id: string;
   user_id: string;
   title: string;
   habit_category_id: string | null;
+  habit_type_id: string | null;
   eta_minutes: number | null;
+  mode: MissionMode;
   status: MissionStatus;
   started_at: Date;
   completed_at: Date | null;

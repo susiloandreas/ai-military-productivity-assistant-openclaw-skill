@@ -3,14 +3,57 @@ services:
     build: .
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      IRONCLAW_SERVICE_URL: http://app:3000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+    networks:
+      - internal
+      - openclaw_default
+    restart: unless-stopped
+
+  eta-worker:
+    build: .
+    command: ["node", "dist/schedulers/EtaExpiryWorker.js"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal
+    restart: unless-stopped
+
+  idle-reminder:
+    build: .
+    command: ["node", "dist/schedulers/IdleReminderWorker.js"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal
     restart: unless-stopped
 
   postgres:
@@ -28,6 +71,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - internal
     restart: unless-stopped
 
   redis:
@@ -36,8 +81,16 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    networks:
+      - internal
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  internal:
+    driver: bridge
+  openclaw_default:
+    external: true

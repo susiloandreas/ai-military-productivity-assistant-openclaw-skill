@@ -205,3 +205,66 @@ ${closer}
 
 ${cta}`;
 }
+
+/**
+ * Find the most contextually relevant "seharusnya" habit — what the user
+ * should have done by now but hasn't logged yet. Used to add habit-aware
+ * context to the generic idle message.
+ *
+ * Today's habits (scheduled time ≤ now, unlogged) are checked first.
+ * For early morning (before 08:00), yesterday's evening habits (≥ 18:00)
+ * are also checked so cross-midnight habits (e.g. Tidur at 22:00) surface.
+ */
+export function findSeharusnyaHabit(
+  schedules: HabitScheduleWithNames[],
+  loggedTypeIds: Set<string>,
+  now: Date = new Date()
+): HabitScheduleWithNames | null {
+  const todayWeekday = now.getDay();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const todayPast = schedules
+    .filter(s => s.days_of_week.includes(todayWeekday))
+    .filter(s => !loggedTypeIds.has(s.habit_type_id))
+    .filter(s => timeToMinutes(s.expected_at) <= nowMin)
+    .sort((a, b) => timeToMinutes(b.expected_at) - timeToMinutes(a.expected_at));
+
+  if (todayPast.length > 0) return todayPast[0];
+
+  // Early morning — look at last night's habits (cross-midnight context)
+  if (nowMin < 8 * 60) {
+    const yesterdayWeekday = (todayWeekday + 6) % 7;
+    const lastNight = schedules
+      .filter(s => s.days_of_week.includes(yesterdayWeekday))
+      .filter(s => timeToMinutes(s.expected_at) >= 18 * 60)
+      .sort((a, b) => timeToMinutes(b.expected_at) - timeToMinutes(a.expected_at));
+
+    if (lastNight.length > 0) return lastNight[0];
+  }
+
+  return null;
+}
+
+/**
+ * Build a generic idle nudge, injecting a "seharusnya" line when a
+ * relevant unlogged habit is found. Falls back to a plain random message
+ * when no habit context is available.
+ */
+export function buildGenericIdleMessage(
+  seharusnya: HabitScheduleWithNames | null,
+  rng: Rng = Math.random
+): string {
+  const base = pick(IDLE_MESSAGES, rng);
+  if (!seharusnya) return base;
+
+  const at = hhmm(seharusnya.expected_at);
+  const hint =
+    `⚠️ <b>SEHARUSNYA:</b> Kamu sudah menyelesaikan ` +
+    `<b>${seharusnya.habit_type_name}</b> (${seharusnya.category_name}) ` +
+    `sejak jam ${at}.`;
+
+  // Inject before the final CTA paragraph
+  const paragraphs = base.split('\n\n');
+  paragraphs.splice(paragraphs.length - 1, 0, hint);
+  return paragraphs.join('\n\n');
+}

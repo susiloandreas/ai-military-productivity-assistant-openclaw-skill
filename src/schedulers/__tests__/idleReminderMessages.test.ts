@@ -2,6 +2,8 @@ import {
   selectDueHabits,
   buildHabitLossAversionMessage,
   randomIdleMessage,
+  findSeharusnyaHabit,
+  buildGenericIdleMessage,
   IDLE_MESSAGES,
 } from '../idleReminderMessages';
 import { HabitScheduleWithNames } from '../../types';
@@ -102,6 +104,77 @@ describe('buildHabitLossAversionMessage', () => {
     expect(first).toContain('running');
     expect(last).toContain('running');
     expect(last).toContain('LEWAT');
+  });
+});
+
+describe('findSeharusnyaHabit', () => {
+  it('returns the most recently past scheduled habit today', () => {
+    const s1 = schedule({ id: 'a', habit_type_id: 'a', expected_at: '06:00:00', habit_type_name: 'running' });
+    const s2 = schedule({ id: 'b', habit_type_id: 'b', expected_at: '08:00:00', habit_type_name: 'reading', days_of_week: [1, 2, 3, 4, 5] });
+    // At 09:00 Monday — both are past; reading (08:00) is more recent
+    const result = findSeharusnyaHabit([s1, s2], NONE, MONDAY(9));
+    expect(result?.habit_type_name).toBe('reading');
+  });
+
+  it('returns null when all past habits are already logged', () => {
+    const logged = new Set(['t1']);
+    const result = findSeharusnyaHabit([schedule({})], logged, MONDAY(9));
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no habits have started yet today', () => {
+    const result = findSeharusnyaHabit([schedule({})], NONE, MONDAY(5)); // before 06:00
+    expect(result).toBeNull();
+  });
+
+  it('falls back to yesterday evening habits before 08:00', () => {
+    // Schedule at 22:00 on Sundays (day 0); MONDAY 01:00 = early morning, yesterdayWeekday = 0
+    const sleepSchedule = schedule({
+      id: 'sleep',
+      habit_type_id: 'sleep',
+      expected_at: '22:00:00',
+      habit_type_name: 'Tidur Malam',
+      days_of_week: [0, 1, 2, 3, 4, 5, 6],
+    });
+    const result = findSeharusnyaHabit([sleepSchedule], NONE, MONDAY(1)); // 01:00 Monday
+    expect(result?.habit_type_name).toBe('Tidur Malam');
+  });
+
+  it('does NOT fall back to yesterday when past 08:00', () => {
+    const sleepSchedule = schedule({
+      id: 'sleep',
+      habit_type_id: 'sleep',
+      expected_at: '22:00:00',
+      habit_type_name: 'Tidur Malam',
+      days_of_week: [0, 1, 2, 3, 4, 5, 6],
+    });
+    const result = findSeharusnyaHabit([sleepSchedule], NONE, MONDAY(9)); // 09:00 — no today past, no fallback
+    expect(result).toBeNull();
+  });
+});
+
+describe('buildGenericIdleMessage', () => {
+  it('returns a plain idle message when no seharusnya habit', () => {
+    const msg = buildGenericIdleMessage(null, () => 0);
+    expect(msg).toBe(IDLE_MESSAGES[0]);
+  });
+
+  it('injects SEHARUSNYA line with habit name and time when habit is provided', () => {
+    const s = schedule({ expected_at: '06:00:00', habit_type_name: 'Lari Pagi', category_name: 'Fisik' });
+    const msg = buildGenericIdleMessage(s, () => 0);
+    expect(msg).toContain('SEHARUSNYA');
+    expect(msg).toContain('Lari Pagi');
+    expect(msg).toContain('06:00');
+    expect(msg).toContain('Fisik');
+  });
+
+  it('places the seharusnya line before the final CTA paragraph', () => {
+    const s = schedule({ habit_type_name: 'Lari Pagi', category_name: 'Fisik' });
+    const msg = buildGenericIdleMessage(s, () => 0);
+    const seharusnyaIdx = msg.indexOf('SEHARUSNYA');
+    const ctaIdx = msg.indexOf('WAJIB');
+    expect(seharusnyaIdx).toBeGreaterThan(0);
+    expect(seharusnyaIdx).toBeLessThan(ctaIdx);
   });
 });
 

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { sendTelegramMessage } from '../utils/telegram';
-import { randomIdleMessage, buildHabitLossAversionMessage } from './idleReminderMessages';
+import { buildHabitLossAversionMessage, buildGenericIdleMessage, findSeharusnyaHabit } from './idleReminderMessages';
 import { DEFAULT_USER_ID } from '../types';
 
 const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
@@ -32,7 +32,7 @@ async function check(): Promise<void> {
   );
 
   const lossAversion = buildHabitLossAversionMessage(schedules, loggedTypeIds, now);
-  const message = lossAversion ?? randomIdleMessage();
+  const message = lossAversion ?? buildGenericIdleMessage(findSeharusnyaHabit(schedules, loggedTypeIds, now));
 
   console.log(
     `[Idle Reminder] ${now.toISOString()} — no active mission, sending ` +

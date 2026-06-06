@@ -6,7 +6,7 @@ Military Discipline & Performance Operating System — OpenClaw skill + standalo
 
 - **Mission tracking** — focused work blocks with optional ETA countdown timers (BullMQ delayed jobs)
 - **Unified activity logging** — missions tagged with a habit category auto-advance the linked goal on completion
-- **Goal system** — one active goal per category, with milestones and a final-exam milestone
+- **Goal system** — goals per category *or* per specific habit (e.g. a "running" goal), with milestones and a final-exam milestone; logging a habit auto-advances its linked goals
 - **Retroactive habit logs** — `/habit log` for activities where no mission was started
 - **Tennis training** — session breakdown by type (serve, footwork, rally, endurance, match)
 - **Sleep tracking** — duration, quality, 7-day debt, and readiness rating
@@ -60,10 +60,16 @@ npm run dev
 npm run build && npm start
 ```
 
-### 5. Start the ETA worker (separate process)
+### 5. Start workers (separate processes)
 
 ```bash
+# ETA expiry worker
 npx ts-node src/schedulers/EtaExpiryWorker.ts
+
+# Idle reminder — every 15 min when no active mission. If a scheduled habit
+# (see /habit schedule) is due or already missed today, it sends a loss-aversion
+# nudge naming that habit instead of the generic prompt.
+npm run dev:idle-reminder
 ```
 
 ### 6. Health check
@@ -86,7 +92,10 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 | `/mission extend <duration>` | Add time to ETA |
 | `/mission status` | Show active mission |
 | `/habit category add <name>` | Create a habit category |
-| `/habit log <cat> <type> <duration>` | Retroactive habit log |
+| `/habit log <cat> <type> <duration>` | Retroactive habit log (auto-advances linked goals) |
+| `/habit goal set <cat> <type> <target>` | Give a habit its own goal (e.g. `50h`) |
+| `/habit schedule add <cat> <type> <time> <days>` | Schedule a habit (e.g. `06:00 mon,wed,fri`) |
+| `/habit schedule list` | List active habit schedules |
 | `/habit summary` | 7-day habit totals |
 | `/tennis start <type>` | Start a tennis mission |
 | `/tennis log <type> <duration>` | Log a tennis session |
@@ -132,6 +141,9 @@ skills/
 | `IRONCLAW_SERVICE_URL` | Public URL for OpenClaw automations |
 | `PORT` | HTTP port (default: `3000`) |
 | `NODE_ENV` | `production` for Railway |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from [@BotFather](https://t.me/botfather) |
+| `TELEGRAM_CHAT_ID` | Your Telegram chat ID — get it from [@userinfobot](https://t.me/userinfobot) |
+| `TZ` | Timezone for habit schedule windows (e.g. `Asia/Jakarta`). The idle worker evaluates "morning 06:00" in this zone |
 
 ## Deployment to Railway
 
@@ -154,6 +166,8 @@ skills/
    NODE_ENV=production
    IRONCLAW_SERVICE_URL=https://<your-railway-domain>.up.railway.app
    PORT=3000
+   TELEGRAM_BOT_TOKEN=<your-bot-token>
+   TELEGRAM_CHAT_ID=<your-chat-id>
    ```
 
 4. **Deploy** — Push to `main` branch or manually trigger from Railway dashboard

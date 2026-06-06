@@ -68,7 +68,13 @@ export class GoalService {
   }
 
   async getGoalStatus(userId: string): Promise<
-    { goal: Goal; totalProgress: number; milestones: Milestone[]; categoryName: string }[]
+    {
+      goal: Goal;
+      totalProgress: number;
+      milestones: Milestone[];
+      categoryName: string;
+      habitTypeName: string | null;
+    }[]
   > {
     const goals = await this.goalRepo.getAllActive(userId);
     return Promise.all(
@@ -76,8 +82,56 @@ export class GoalService {
         const totalProgress = await this.goalRepo.getTotalProgress(goal.id);
         const milestones = await this.goalRepo.getMilestones(goal.id);
         const category = await this.habitRepo.getCategoryById(goal.habit_category_id);
-        return { goal, totalProgress, milestones, categoryName: category?.name ?? 'Unknown' };
+        const habitType = goal.habit_type_id
+          ? await this.habitRepo.getHabitTypeById(goal.habit_type_id)
+          : null;
+        return {
+          goal,
+          totalProgress,
+          milestones,
+          categoryName: category?.name ?? 'Unknown',
+          habitTypeName: habitType?.name ?? null,
+        };
       })
     );
+  }
+
+  /**
+   * Create a goal tied to a specific habit type, with a single final-exam
+   * milestone at `targetMinutes`. Logging that habit then auto-advances the goal,
+   * which is marked achieved once the target is reached. Creates the habit type
+   * if it does not yet exist under the category.
+   */
+  async createHabitGoal(
+    userId: string,
+    categoryName: string,
+    habitTypeName: string,
+    targetMinutes: number,
+    deadline: Date | null = null
+  ): Promise<{ goal: Goal; milestone: Milestone }> {
+    const category = await this.habitRepo.getCategoryByName(userId, categoryName);
+    if (!category) throw new Error(`Category "${categoryName}" not found.`);
+
+    const habitType = await this.habitRepo.upsertHabitType(category.id, habitTypeName);
+
+    const existing = await this.goalRepo.getActiveByHabitType(habitType.id);
+    if (existing) throw new Error(`An active goal for "${habitTypeName}" already exists.`);
+
+    const goal = await this.goalRepo.create(
+      userId,
+      category.id,
+      `${habitTypeName} goal`,
+      null,
+      deadline,
+      habitType.id
+    );
+    const milestone = await this.goalRepo.addMilestone(
+      goal.id,
+      `${targetMinutes} minutes total`,
+      targetMinutes,
+      'minutes',
+      true
+    );
+    return { goal, milestone };
   }
 }

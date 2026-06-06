@@ -42,6 +42,7 @@ describe('handleHabitCommand', () => {
       listCategories: jest.fn(),
       logRetroactive: jest.fn(),
       getWeeklySummary: jest.fn(),
+      setHabitGoal: jest.fn(),
     } as unknown as jest.Mocked<HabitService>;
   });
 
@@ -93,6 +94,7 @@ describe('handleHabitCommand', () => {
       service.logRetroactive.mockResolvedValue({
         habitLog: makeHabitLog({ duration_minutes: 45 }),
         goalProgress: null,
+        habitGoalProgress: null,
       });
       const output = await handleHabitCommand(
         ['log', 'exercise', 'running', '45m'],
@@ -119,18 +121,43 @@ describe('handleHabitCommand', () => {
           milestonesUnlocked: [],
           goalCompleted: false,
         },
+        habitGoalProgress: null,
       });
       const output = await handleHabitCommand(
         ['log', 'exercise', 'running', '45m'],
         'user-1',
         service
       );
-      expect(output).toContain('Goal progress');
-      expect(output).toContain('Total');
+      expect(output).toContain('+45min');
+      expect(output).toContain('total 145min');
     });
 
     it('returns error when args missing', async () => {
       const output = await handleHabitCommand(['log', 'exercise'], 'user-1', service);
+      expect(output).toContain('OPERATION FAILED');
+    });
+  });
+
+  describe('goal set', () => {
+    it('creates a goal for a habit', async () => {
+      service.setHabitGoal.mockResolvedValue({
+        goal: { title: 'running goal' } as any,
+        milestone: { target_value: 3000 } as any,
+      });
+      const output = await handleHabitCommand(
+        ['goal', 'set', 'exercise', 'running', '50h'],
+        'user-1',
+        service
+      );
+      expect(service.setHabitGoal).toHaveBeenCalledWith(
+        'user-1', 'exercise', 'running', '50h', null
+      );
+      expect(output).toContain('HABIT GOAL SET');
+      expect(output).toContain('running goal');
+    });
+
+    it('returns error when args missing', async () => {
+      const output = await handleHabitCommand(['goal', 'set', 'exercise'], 'user-1', service);
       expect(output).toContain('OPERATION FAILED');
     });
   });

@@ -21,6 +21,7 @@ export interface Goal {
   id: string;
   user_id: string;
   habit_category_id: string;
+  habit_type_id: string | null; // when set, the goal targets a specific habit type
   title: string;
   target_description: string | null;
   deadline: Date | null;
@@ -56,6 +57,25 @@ export interface HabitLog {
   duration_minutes: number;
   logged_at: Date;
   note: string | null;
+}
+
+// ── Habit Schedules ────────────────────────────────────────────────────────
+// A habit the user is expected to perform at a set time on set weekdays,
+// e.g. "running at 06:00 on Mon/Wed/Fri". Drives the idle loss-aversion nudge.
+export interface HabitSchedule {
+  id: string;
+  habit_type_id: string;
+  user_id: string;
+  expected_at: string;     // 'HH:MM:SS' (pg TIME)
+  grace_minutes: number;
+  days_of_week: number[];  // 0=Sunday .. 6=Saturday
+  active: boolean;
+  created_at: Date;
+}
+
+export interface HabitScheduleWithNames extends HabitSchedule {
+  habit_type_name: string;
+  category_name: string;
 }
 
 // ── Goal Progress Logs ─────────────────────────────────────────────────────

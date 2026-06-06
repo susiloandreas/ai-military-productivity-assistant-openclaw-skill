@@ -45,7 +45,10 @@ export async function handleStatusCommand(
               `Next: ${nextMilestone.title} @ ${formatMinutes(nextMilestone.target_value)}${nextMilestone.is_final_exam ? ' [FINAL EXAM]' : ''}`
             );
           }
-          return { label: g.categoryName.toUpperCase(), lines };
+          const label = g.habitTypeName
+            ? `${g.categoryName} / ${g.habitTypeName}`
+            : g.categoryName;
+          return { label: label.toUpperCase(), lines };
         });
         return formatBlock('GOAL STATUS', sections);
       }

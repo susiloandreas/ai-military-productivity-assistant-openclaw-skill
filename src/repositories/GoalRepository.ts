@@ -9,21 +9,33 @@ export class GoalRepository {
     habitCategoryId: string,
     title: string,
     targetDescription: string | null,
-    deadline: Date | null
+    deadline: Date | null,
+    habitTypeId: string | null = null
   ): Promise<Goal> {
     const { rows } = await pool.query<Goal>(
-      `INSERT INTO goals (user_id, habit_category_id, title, target_description, deadline)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [userId, habitCategoryId, title, targetDescription, deadline]
+      `INSERT INTO goals (user_id, habit_category_id, title, target_description, deadline, habit_type_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [userId, habitCategoryId, title, targetDescription, deadline, habitTypeId]
     );
     return rows[0];
   }
 
+  /** Active category-level goal (aggregates the whole category; not tied to a habit type). */
   async getActiveByCategory(habitCategoryId: string): Promise<Goal | null> {
     const { rows } = await pool.query<Goal>(
-      `SELECT * FROM goals WHERE habit_category_id = $1 AND status = 'active'
+      `SELECT * FROM goals WHERE habit_category_id = $1 AND habit_type_id IS NULL AND status = 'active'
        ORDER BY created_at DESC LIMIT 1`,
       [habitCategoryId]
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Active goal targeting a specific habit type (e.g. a "running" goal). */
+  async getActiveByHabitType(habitTypeId: string): Promise<Goal | null> {
+    const { rows } = await pool.query<Goal>(
+      `SELECT * FROM goals WHERE habit_type_id = $1 AND status = 'active'
+       ORDER BY created_at DESC LIMIT 1`,
+      [habitTypeId]
     );
     return rows[0] ?? null;
   }

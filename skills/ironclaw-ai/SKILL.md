@@ -1,5 +1,6 @@
 ---
 name: ironclaw-ai
+type: prompt
 description: Military Discipline & Performance Operating System. Tracks missions, habits, goals, tennis training, sleep, and discipline scores. Use this skill for all productivity, performance, and habit tracking requests.
 
 # Routing Metadata

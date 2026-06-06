@@ -38,6 +38,24 @@ services:
       - internal
     restart: unless-stopped
 
+  idle-reminder:
+    build: .
+    command: ["node", "dist/schedulers/IdleReminderWorker.js"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:

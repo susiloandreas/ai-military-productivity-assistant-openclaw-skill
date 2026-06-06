@@ -1,0 +1,31 @@
+schema: spec-driven
+
+context: |
+  Project: IronClaw AI — Military Discipline & Performance Operating System.
+  Tech stack: TypeScript, Node.js, Express, PostgreSQL (pg), Redis + BullMQ, Jest.
+  Architecture: Telegram → OpenClaw agent → POST /commands → ironclaw-ai Express
+  service → PostgreSQL (17 tables); ETA expiry jobs run via Redis + BullMQ.
+  Schedulers live in src/schedulers/ and run as separate worker processes
+  (declared in the Procfile). Telegram delivery normally flows through OpenClaw;
+  the IdleReminderWorker is the exception and posts directly via src/utils/telegram.ts.
+  Conventions: one repository class per domain, services hold business logic,
+  slash-command parsers in src/commands/, TypeScript interfaces in src/types.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

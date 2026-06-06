@@ -118,6 +118,7 @@ describe('handleStatusCommand', () => {
             { id: 'ms-1', target_value: 500, unit: 'minutes', title: 'Bronze', is_final_exam: false, achieved_at: null } as any,
           ],
           categoryName: 'Exercise',
+          habitTypeName: null,
         },
       ]);
       const output = await call(['goals']);

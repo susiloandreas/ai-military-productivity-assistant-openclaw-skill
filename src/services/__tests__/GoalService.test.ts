@@ -20,6 +20,7 @@ const makeGoal = (overrides: Partial<Goal> = {}): Goal => ({
   id: 'goal-1',
   user_id: 'user-1',
   habit_category_id: 'cat-1',
+  habit_type_id: null,
   title: 'Intermediate Tennis',
   target_description: null,
   deadline: null,

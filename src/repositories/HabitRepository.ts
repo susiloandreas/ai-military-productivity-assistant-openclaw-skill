@@ -1,5 +1,5 @@
 import { pool } from '../db/connection';
-import { HabitCategory, HabitType, HabitLog } from '../types';
+import { HabitCategory, HabitType, HabitLog, HabitSchedule, HabitScheduleWithNames } from '../types';
 
 export class HabitRepository {
   // ── Categories ──────────────────────────────────────────────────────────
@@ -50,6 +50,14 @@ export class HabitRepository {
     return rows[0];
   }
 
+  async getHabitTypeById(id: string): Promise<HabitType | null> {
+    const { rows } = await pool.query<HabitType>(
+      `SELECT * FROM habit_types WHERE id = $1`,
+      [id]
+    );
+    return rows[0] ?? null;
+  }
+
   async getHabitTypeByName(habitCategoryId: string, name: string): Promise<HabitType | null> {
     const { rows } = await pool.query<HabitType>(
       `SELECT * FROM habit_types WHERE habit_category_id = $1 AND LOWER(name) = LOWER($2)`,
@@ -84,6 +92,16 @@ export class HabitRepository {
     return rows;
   }
 
+  /** Habit type ids the user has logged on or after `since` (used for "logged today"). */
+  async getHabitTypeIdsLoggedSince(userId: string, since: Date): Promise<string[]> {
+    const { rows } = await pool.query<{ habit_type_id: string }>(
+      `SELECT DISTINCT habit_type_id FROM habit_logs
+       WHERE user_id = $1 AND logged_at >= $2`,
+      [userId, since]
+    );
+    return rows.map(r => r.habit_type_id);
+  }
+
   /** Returns habit logs created within the last `minutes` minutes. */
   async getLogsSince(userId: string, minutes: number): Promise<HabitLog[]> {
     const { rows } = await pool.query<HabitLog>(
@@ -107,6 +125,37 @@ export class HabitRepository {
        WHERE hc.user_id = $1
        GROUP BY hc.id, hc.name
        ORDER BY hc.name`,
+      [userId]
+    );
+    return rows;
+  }
+
+  // ── Habit Schedules ───────────────────────────────────────────────────────
+
+  async createSchedule(
+    userId: string,
+    habitTypeId: string,
+    expectedAt: string,
+    daysOfWeek: number[],
+    graceMinutes = 90
+  ): Promise<HabitSchedule> {
+    const { rows } = await pool.query<HabitSchedule>(
+      `INSERT INTO habit_schedules (user_id, habit_type_id, expected_at, days_of_week, grace_minutes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [userId, habitTypeId, expectedAt, daysOfWeek, graceMinutes]
+    );
+    return rows[0];
+  }
+
+  /** Active schedules with their habit type + category names, for the reminder check. */
+  async getActiveSchedules(userId: string): Promise<HabitScheduleWithNames[]> {
+    const { rows } = await pool.query<HabitScheduleWithNames>(
+      `SELECT hs.*, ht.name AS habit_type_name, hc.name AS category_name
+       FROM habit_schedules hs
+       JOIN habit_types ht ON ht.id = hs.habit_type_id
+       JOIN habit_categories hc ON hc.id = ht.habit_category_id
+       WHERE hs.user_id = $1 AND hs.active = TRUE
+       ORDER BY hs.expected_at`,
       [userId]
     );
     return rows;

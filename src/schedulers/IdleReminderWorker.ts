@@ -28,7 +28,7 @@ async function check(): Promise<void> {
   const now = new Date();
   const schedules = await habitRepo.getActiveSchedules(DEFAULT_USER_ID);
   const loggedTypeIds = new Set(
-    await habitRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now))
+    await missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now))
   );
 
   const lossAversion = buildHabitLossAversionMessage(schedules, loggedTypeIds, now);

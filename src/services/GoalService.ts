@@ -31,8 +31,7 @@ export class GoalService {
     goalId: string,
     valueDelta: number,
     unit: string,
-    sourceMissionId: string | null,
-    sourceHabitLogId: string | null
+    sourceMissionId: string | null
   ): Promise<ProgressResult> {
     const goal = await this.goalRepo.getById(goalId);
     if (!goal) throw new Error(`Goal ${goalId} not found`);
@@ -42,8 +41,7 @@ export class GoalService {
       goalId,
       valueDelta,
       unit,
-      sourceMissionId,
-      sourceHabitLogId
+      sourceMissionId
     );
 
     const totalProgress = await this.goalRepo.getTotalProgress(goalId);

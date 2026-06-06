@@ -1,5 +1,5 @@
 import { pool } from '../db/connection';
-import { HabitCategory, HabitType, HabitLog, HabitSchedule, HabitScheduleWithNames } from '../types';
+import { HabitCategory, HabitType, HabitSchedule, HabitScheduleWithNames } from '../types';
 
 export class HabitRepository {
   // ── Categories ──────────────────────────────────────────────────────────
@@ -64,70 +64,6 @@ export class HabitRepository {
       [habitCategoryId, name]
     );
     return rows[0] ?? null;
-  }
-
-  // ── Habit Logs ──────────────────────────────────────────────────────────
-
-  async createLog(
-    userId: string,
-    habitTypeId: string,
-    durationMinutes: number,
-    note?: string
-  ): Promise<HabitLog> {
-    const { rows } = await pool.query<HabitLog>(
-      `INSERT INTO habit_logs (user_id, habit_type_id, duration_minutes, note)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, habitTypeId, durationMinutes, note ?? null]
-    );
-    return rows[0];
-  }
-
-  async getRecentLogs(userId: string, days = 7): Promise<HabitLog[]> {
-    const { rows } = await pool.query<HabitLog>(
-      `SELECT * FROM habit_logs
-       WHERE user_id = $1 AND logged_at >= NOW() - INTERVAL '1 day' * $2
-       ORDER BY logged_at DESC`,
-      [userId, days]
-    );
-    return rows;
-  }
-
-  /** Habit type ids the user has logged on or after `since` (used for "logged today"). */
-  async getHabitTypeIdsLoggedSince(userId: string, since: Date): Promise<string[]> {
-    const { rows } = await pool.query<{ habit_type_id: string }>(
-      `SELECT DISTINCT habit_type_id FROM habit_logs
-       WHERE user_id = $1 AND logged_at >= $2`,
-      [userId, since]
-    );
-    return rows.map(r => r.habit_type_id);
-  }
-
-  /** Returns habit logs created within the last `minutes` minutes. */
-  async getLogsSince(userId: string, minutes: number): Promise<HabitLog[]> {
-    const { rows } = await pool.query<HabitLog>(
-      `SELECT * FROM habit_logs
-       WHERE user_id = $1 AND logged_at >= NOW() - INTERVAL '1 minute' * $2
-       ORDER BY logged_at DESC`,
-      [userId, minutes]
-    );
-    return rows;
-  }
-
-  async getWeeklySummary(
-    userId: string
-  ): Promise<{ habit_category_id: string; name: string; total_minutes: number }[]> {
-    const { rows } = await pool.query(
-      `SELECT hc.id AS habit_category_id, hc.name, COALESCE(SUM(hl.duration_minutes), 0) AS total_minutes
-       FROM habit_categories hc
-       LEFT JOIN habit_types ht ON ht.habit_category_id = hc.id
-       LEFT JOIN habit_logs hl ON hl.habit_type_id = ht.id
-         AND hl.logged_at >= NOW() - INTERVAL '7 days'
-       WHERE hc.user_id = $1
-       GROUP BY hc.id, hc.name
-       ORDER BY hc.name`,
-      [userId]
-    );
-    return rows;
   }
 
   // ── Habit Schedules ───────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ jest.mock('bullmq', () => ({
 
 import { handleHabitCommand } from '../../commands/habitCommands';
 import { HabitService } from '../../services/HabitService';
-import { HabitCategory, HabitLog } from '../../types';
+import { HabitCategory } from '../../types';
 
 const makeCategory = (overrides: Partial<HabitCategory> = {}): HabitCategory => ({
   id: 'cat-1',
@@ -23,16 +23,6 @@ const makeCategory = (overrides: Partial<HabitCategory> = {}): HabitCategory => 
   ...overrides,
 });
 
-const makeHabitLog = (overrides: Partial<HabitLog> = {}): HabitLog => ({
-  id: 'log-1',
-  habit_type_id: 'type-1',
-  user_id: 'user-1',
-  duration_minutes: 45,
-  logged_at: new Date(),
-  note: null,
-  ...overrides,
-});
-
 describe('handleHabitCommand', () => {
   let service: jest.Mocked<HabitService>;
 
@@ -40,7 +30,6 @@ describe('handleHabitCommand', () => {
     service = {
       addCategory: jest.fn(),
       listCategories: jest.fn(),
-      logRetroactive: jest.fn(),
       getWeeklySummary: jest.fn(),
       setHabitGoal: jest.fn(),
     } as unknown as jest.Mocked<HabitService>;
@@ -86,55 +75,6 @@ describe('handleHabitCommand', () => {
       service.listCategories.mockResolvedValue([]);
       const output = await handleHabitCommand(['category', 'list'], 'user-1', service);
       expect(output).toContain('No categories yet');
-    });
-  });
-
-  describe('log', () => {
-    it('logs a habit retroactively', async () => {
-      service.logRetroactive.mockResolvedValue({
-        habitLog: makeHabitLog({ duration_minutes: 45 }),
-        goalProgress: null,
-        habitGoalProgress: null,
-      });
-      const output = await handleHabitCommand(
-        ['log', 'exercise', 'running', '45m'],
-        'user-1',
-        service
-      );
-      expect(service.logRetroactive).toHaveBeenCalledWith(
-        'user-1',
-        'exercise',
-        'running',
-        '45m',
-        undefined
-      );
-      expect(output).toContain('HABIT LOGGED');
-    });
-
-    it('shows goal progress when available', async () => {
-      service.logRetroactive.mockResolvedValue({
-        habitLog: makeHabitLog({ duration_minutes: 45 }),
-        goalProgress: {
-          goal: {} as any,
-          progressLog: { value_delta: 45 } as any,
-          totalProgress: 145,
-          milestonesUnlocked: [],
-          goalCompleted: false,
-        },
-        habitGoalProgress: null,
-      });
-      const output = await handleHabitCommand(
-        ['log', 'exercise', 'running', '45m'],
-        'user-1',
-        service
-      );
-      expect(output).toContain('+45min');
-      expect(output).toContain('total 145min');
-    });
-
-    it('returns error when args missing', async () => {
-      const output = await handleHabitCommand(['log', 'exercise'], 'user-1', service);
-      expect(output).toContain('OPERATION FAILED');
     });
   });
 

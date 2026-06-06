@@ -47,7 +47,6 @@ const makeProgressLog = (overrides: Partial<GoalProgressLog> = {}): GoalProgress
   value_delta: 90,
   unit: 'minutes',
   source_mission_id: 'mission-1',
-  source_habit_log_id: null,
   logged_at: new Date(),
   ...overrides,
 });
@@ -79,9 +78,6 @@ describe('GoalService', () => {
       getAllCategories: jest.fn(),
       upsertHabitType: jest.fn(),
       getHabitTypeByName: jest.fn(),
-      createLog: jest.fn(),
-      getRecentLogs: jest.fn(),
-      getWeeklySummary: jest.fn(),
     } as unknown as jest.Mocked<HabitRepository>;
 
     service = new GoalService(goalRepo, habitRepo);
@@ -98,7 +94,7 @@ describe('GoalService', () => {
       goalRepo.getTotalProgress.mockResolvedValue(90); // below 600
       goalRepo.getMilestones.mockResolvedValue([milestone]);
 
-      const result = await service.logProgress('goal-1', 90, 'minutes', 'mission-1', null);
+      const result = await service.logProgress('goal-1', 90, 'minutes', 'mission-1');
 
       expect(result.progressLog.value_delta).toBe(90);
       expect(result.totalProgress).toBe(90);
@@ -119,7 +115,7 @@ describe('GoalService', () => {
       goalRepo.achieveMilestone.mockResolvedValue(achievedMilestone);
       goalRepo.getById.mockResolvedValueOnce(goal).mockResolvedValueOnce(goal);
 
-      const result = await service.logProgress('goal-1', 600, 'minutes', 'mission-1', null);
+      const result = await service.logProgress('goal-1', 600, 'minutes', 'mission-1');
 
       expect(goalRepo.achieveMilestone).toHaveBeenCalledWith('ms-1');
       expect(result.milestonesUnlocked).toHaveLength(1);
@@ -146,7 +142,7 @@ describe('GoalService', () => {
         .mockResolvedValueOnce(goal)
         .mockResolvedValueOnce({ ...goal, status: 'achieved' });
 
-      const result = await service.logProgress('goal-1', 3000, 'minutes', null, null);
+      const result = await service.logProgress('goal-1', 3000, 'minutes', null);
 
       expect(goalRepo.updateStatus).toHaveBeenCalledWith('goal-1', 'achieved');
       expect(result.goalCompleted).toBe(true);
@@ -154,14 +150,14 @@ describe('GoalService', () => {
 
     it('throws when goal not found', async () => {
       goalRepo.getById.mockResolvedValue(null);
-      await expect(service.logProgress('bad-id', 90, 'minutes', null, null)).rejects.toThrow(
+      await expect(service.logProgress('bad-id', 90, 'minutes', null)).rejects.toThrow(
         'Goal bad-id not found'
       );
     });
 
     it('throws when goal is not active', async () => {
       goalRepo.getById.mockResolvedValue(makeGoal({ status: 'achieved' }));
-      await expect(service.logProgress('goal-1', 90, 'minutes', null, null)).rejects.toThrow(
+      await expect(service.logProgress('goal-1', 90, 'minutes', null)).rejects.toThrow(
         'not active'
       );
     });

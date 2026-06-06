@@ -1,8 +1,7 @@
 import { HabitRepository } from '../repositories/HabitRepository';
-import { GoalRepository } from '../repositories/GoalRepository';
-import { GoalService, ProgressResult } from './GoalService';
+import { MissionRepository } from '../repositories/MissionRepository';
+import { GoalService } from './GoalService';
 import {
-  HabitLog,
   HabitCategory,
   HabitSchedule,
   HabitScheduleWithNames,
@@ -11,18 +10,10 @@ import {
 } from '../types';
 import { parseDurationToMinutes } from '../utils/duration';
 
-export interface HabitLogResult {
-  habitLog: HabitLog;
-  /** Progress on the category-level (aggregate) goal, if one is active. */
-  goalProgress: ProgressResult | null;
-  /** Progress on the goal tied to this specific habit type, if one is active. */
-  habitGoalProgress: ProgressResult | null;
-}
-
 export class HabitService {
   constructor(
     private habitRepo: HabitRepository,
-    private goalRepo: GoalRepository,
+    private missionRepo: MissionRepository,
     private goalService: GoalService
   ) {}
 
@@ -36,51 +27,8 @@ export class HabitService {
     return this.habitRepo.getAllCategories(userId);
   }
 
-  async logRetroactive(
-    userId: string,
-    categoryName: string,
-    habitTypeName: string,
-    durationStr: string,
-    note?: string
-  ): Promise<HabitLogResult> {
-    const category = await this.habitRepo.getCategoryByName(userId, categoryName);
-    if (!category) throw new Error(`Category "${categoryName}" not found.`);
-
-    const habitType = await this.habitRepo.upsertHabitType(category.id, habitTypeName);
-    const durationMinutes = parseDurationToMinutes(durationStr);
-    const habitLog = await this.habitRepo.createLog(userId, habitType.id, durationMinutes, note);
-
-    // Advance the goal tied to this specific habit type (e.g. a "running" goal)...
-    let habitGoalProgress: ProgressResult | null = null;
-    const habitGoal = await this.goalRepo.getActiveByHabitType(habitType.id);
-    if (habitGoal) {
-      habitGoalProgress = await this.goalService.logProgress(
-        habitGoal.id,
-        durationMinutes,
-        'minutes',
-        null,
-        habitLog.id
-      );
-    }
-
-    // ...and the broader category-level goal, if one is active.
-    let goalProgress: ProgressResult | null = null;
-    const goal = await this.goalRepo.getActiveByCategory(category.id);
-    if (goal) {
-      goalProgress = await this.goalService.logProgress(
-        goal.id,
-        durationMinutes,
-        'minutes',
-        null,
-        habitLog.id
-      );
-    }
-
-    return { habitLog, goalProgress, habitGoalProgress };
-  }
-
   async getWeeklySummary(userId: string): Promise<{ name: string; total_minutes: number }[]> {
-    return this.habitRepo.getWeeklySummary(userId);
+    return this.missionRepo.getWeeklyCategorySummary(userId);
   }
 
   /**

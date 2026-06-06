@@ -22,7 +22,9 @@ const makeMission = (overrides: Partial<Mission> = {}): Mission => ({
   user_id: 'user-1',
   title: 'Write API',
   habit_category_id: null,
+  habit_type_id: null,
   eta_minutes: 60,
+  mode: 'live',
   status: 'active',
   started_at: new Date(),
   completed_at: null,
@@ -43,6 +45,7 @@ describe('MissionService', () => {
   beforeEach(() => {
     missionRepo = {
       create: jest.fn(),
+      createRetroactive: jest.fn(),
       getActive: jest.fn(),
       getById: jest.fn(),
       updateStatus: jest.fn(),
@@ -53,10 +56,12 @@ describe('MissionService', () => {
 
     goalRepo = {
       getActiveByCategory: jest.fn(),
+      getActiveByHabitType: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<GoalRepository>;
 
     habitRepo = {
       getCategoryByName: jest.fn(),
+      upsertHabitType: jest.fn(),
     } as unknown as jest.Mocked<HabitRepository>;
 
     goalService = {
@@ -154,8 +159,7 @@ describe('MissionService', () => {
         'goal-1',
         90,
         'minutes',
-        'mission-1',
-        null
+        'mission-1'
       );
       expect(result.goalProgress).not.toBeNull();
       expect(result.goalProgress?.progressLog.value_delta).toBe(90);
@@ -164,6 +168,78 @@ describe('MissionService', () => {
     it('throws when no active mission', async () => {
       missionRepo.getActive.mockResolvedValue(null);
       await expect(service.complete('user-1', null, null)).rejects.toThrow('No active mission');
+    });
+  });
+
+  describe('logRetroactive', () => {
+    const setupCategoryAndType = () => {
+      habitRepo.getCategoryByName.mockResolvedValue({
+        id: 'cat-1', user_id: 'user-1', name: 'exercise', description: null, created_at: new Date(),
+      });
+      habitRepo.upsertHabitType.mockResolvedValue({
+        id: 'ht-1', habit_category_id: 'cat-1', name: 'running', unit: 'minutes', created_at: new Date(),
+      });
+      missionRepo.createRetroactive.mockResolvedValue(
+        makeMission({
+          mode: 'retroactive',
+          status: 'completed',
+          habit_category_id: 'cat-1',
+          habit_type_id: 'ht-1',
+          actual_duration_minutes: 60,
+        })
+      );
+    };
+
+    it('records a retroactive mission with no linked goal', async () => {
+      setupCategoryAndType();
+      goalRepo.getActiveByCategory.mockResolvedValue(null);
+
+      const result = await service.logRetroactive('user-1', 'exercise', 'running', '60m', null);
+
+      expect(missionRepo.createRetroactive).toHaveBeenCalledWith(
+        'user-1', 'running', 'cat-1', 'ht-1', 60, null
+      );
+      expect(result.mission.actual_duration_minutes).toBe(60);
+      expect(result.goalProgress).toBeNull();
+      expect(result.habitGoalProgress).toBeNull();
+    });
+
+    it('advances the category goal when one is active', async () => {
+      setupCategoryAndType();
+      goalRepo.getActiveByCategory.mockResolvedValue({ id: 'goal-1', status: 'active' } as any);
+      goalService.logProgress.mockResolvedValue({
+        goal: {} as any, progressLog: {} as any, totalProgress: 60,
+        milestonesUnlocked: [], goalCompleted: false,
+      });
+
+      const result = await service.logRetroactive('user-1', 'exercise', 'running', '60m', null);
+
+      expect(goalService.logProgress).toHaveBeenCalledWith('goal-1', 60, 'minutes', 'mission-1');
+      expect(result.goalProgress).not.toBeNull();
+    });
+
+    it('advances a goal tied to the specific habit type', async () => {
+      setupCategoryAndType();
+      goalRepo.getActiveByCategory.mockResolvedValue(null);
+      goalRepo.getActiveByHabitType.mockResolvedValue({ id: 'run-goal', status: 'active' } as any);
+      goalService.logProgress.mockResolvedValue({
+        goal: {} as any, progressLog: {} as any, totalProgress: 60,
+        milestonesUnlocked: [], goalCompleted: false,
+      });
+
+      const result = await service.logRetroactive('user-1', 'exercise', 'running', '60m', null);
+
+      expect(goalRepo.getActiveByHabitType).toHaveBeenCalledWith('ht-1');
+      expect(goalService.logProgress).toHaveBeenCalledWith('run-goal', 60, 'minutes', 'mission-1');
+      expect(result.habitGoalProgress).not.toBeNull();
+      expect(result.goalProgress).toBeNull();
+    });
+
+    it('throws when category not found', async () => {
+      habitRepo.getCategoryByName.mockResolvedValue(null);
+      await expect(
+        service.logRetroactive('user-1', 'unknown', 'running', '60m', null)
+      ).rejects.toThrow('Category "unknown" not found');
     });
   });
 

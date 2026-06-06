@@ -19,7 +19,9 @@ const makeMission = (overrides: Partial<Mission> = {}): Mission => ({
   user_id: 'user-1',
   title: 'Write Tests',
   habit_category_id: null,
+  habit_type_id: null,
   eta_minutes: 60,
+  mode: 'live',
   status: 'active',
   started_at: new Date(),
   completed_at: null,
@@ -37,6 +39,7 @@ describe('handleMissionCommand', () => {
     service = {
       start: jest.fn(),
       complete: jest.fn(),
+      logRetroactive: jest.fn(),
       abort: jest.fn(),
       extend: jest.fn(),
       getActiveMission: jest.fn(),
@@ -121,6 +124,56 @@ describe('handleMissionCommand', () => {
       const output = await handleMissionCommand(['complete'], 'user-1', service);
       expect(output).toContain('MILESTONE UNLOCKED');
       expect(output).toContain('Beginner');
+    });
+  });
+
+  describe('log', () => {
+    it('logs an activity retroactively', async () => {
+      service.logRetroactive.mockResolvedValue({
+        mission: makeMission({ mode: 'retroactive', status: 'completed', actual_duration_minutes: 45 }),
+        goalProgress: null,
+        habitGoalProgress: null,
+      });
+      const output = await handleMissionCommand(
+        ['log', 'exercise', 'running', '45m'],
+        'user-1',
+        service
+      );
+      expect(service.logRetroactive).toHaveBeenCalledWith(
+        'user-1',
+        'exercise',
+        'running',
+        '45m',
+        null
+      );
+      expect(output).toContain('ACTIVITY LOGGED');
+    });
+
+    it('shows goal progress when available', async () => {
+      service.logRetroactive.mockResolvedValue({
+        mission: makeMission({ mode: 'retroactive', status: 'completed', actual_duration_minutes: 45 }),
+        goalProgress: {
+          goal: {} as any,
+          progressLog: { value_delta: 45 } as any,
+          totalProgress: 145,
+          milestonesUnlocked: [],
+          goalCompleted: false,
+        },
+        habitGoalProgress: null,
+      });
+      const output = await handleMissionCommand(
+        ['log', 'exercise', 'running', '45m'],
+        'user-1',
+        service
+      );
+      expect(output).toContain('+45min');
+      expect(output).toContain('total 145min');
+    });
+
+    it('returns error when args missing', async () => {
+      const output = await handleMissionCommand(['log', 'exercise'], 'user-1', service);
+      expect(output).toContain('OPERATION FAILED');
+      expect(service.logRetroactive).not.toHaveBeenCalled();
     });
   });
 

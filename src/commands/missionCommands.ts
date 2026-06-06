@@ -1,10 +1,12 @@
 import { MissionService } from '../services/MissionService';
+import { ProgressResult } from '../services/GoalService';
 import { formatSuccess, formatError, formatStatus } from '../utils/formatter';
 import { formatMinutes } from '../utils/duration';
 
 /**
  * /mission start <title> [--eta <duration>] [--category <name>]
  * /mission complete [--duration <duration>] [--notes <text>]
+ * /mission log <category> <type> <duration> [--note <text>]
  * /mission abort
  * /mission extend <duration>
  * /mission status
@@ -58,6 +60,31 @@ export async function handleMissionCommand(
         return formatSuccess('MISSION COMPLETE', lines);
       }
 
+      case 'log': {
+        // /mission log <category> <type> <duration> [--note <text>]
+        const rest = args.slice(1);
+        const note = extractFlag(rest, '--note');
+        const [categoryName, habitTypeName, durationStr] = rest;
+        if (!categoryName || !habitTypeName || !durationStr) {
+          return formatError('Usage: /mission log <category> <type> <duration>');
+        }
+        const { mission, goalProgress, habitGoalProgress } = await service.logRetroactive(
+          userId,
+          categoryName,
+          habitTypeName,
+          durationStr,
+          note
+        );
+        const lines = [
+          `Category: ${categoryName}`,
+          `Type: ${habitTypeName}`,
+          `Duration: ${formatMinutes(mission.actual_duration_minutes ?? 0)}`,
+        ];
+        appendGoalProgress(lines, `${habitTypeName} goal`, habitGoalProgress);
+        appendGoalProgress(lines, `${categoryName} goal`, goalProgress);
+        return formatSuccess('ACTIVITY LOGGED', lines);
+      }
+
       case 'abort': {
         const mission = await service.abort(userId);
         return formatSuccess('MISSION ABORTED', [`Mission: ${mission.title}`]);
@@ -89,12 +116,26 @@ export async function handleMissionCommand(
 
       default:
         return formatError(
-          'Unknown subcommand. Use: start | complete | abort | extend | status'
+          'Unknown subcommand. Use: start | complete | log | abort | extend | status'
         );
     }
   } catch (err) {
     return formatError((err as Error).message);
   }
+}
+
+/** Append goal-progress lines (delta, total, milestones) for one advanced goal. */
+function appendGoalProgress(
+  lines: string[],
+  label: string,
+  progress: ProgressResult | null
+): void {
+  if (!progress) return;
+  lines.push(`${label}: +${progress.progressLog.value_delta}min (total ${progress.totalProgress}min)`);
+  for (const m of progress.milestonesUnlocked) {
+    lines.push(`MILESTONE UNLOCKED: ${m.title}`);
+  }
+  if (progress.goalCompleted) lines.push(`GOAL ACHIEVED: ${label}`);
 }
 
 function extractFlag(args: string[], flag: string): string | null {

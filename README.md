@@ -5,9 +5,9 @@ Military Discipline & Performance Operating System — OpenClaw skill + standalo
 ## What it does
 
 - **Mission tracking** — focused work blocks with optional ETA countdown timers (BullMQ delayed jobs)
-- **Unified activity logging** — missions tagged with a habit category auto-advance the linked goal on completion
-- **Goal system** — goals per category *or* per specific habit (e.g. a "running" goal), with milestones and a final-exam milestone; logging a habit auto-advances its linked goals
-- **Retroactive habit logs** — `/habit log` for activities where no mission was started
+- **Unified activity logging** — every activity is a mission: *live* (`/mission start` → `complete`) or *retroactive* (`/mission log`). Both auto-advance the linked goal.
+- **Goal system** — goals per category *or* per specific habit (e.g. a "running" goal), with milestones and a final-exam milestone; logging an activity auto-advances its linked goals
+- **Retroactive activity logs** — `/mission log <cat> <type> <duration>` for activities where no live mission was started
 - **Tennis training** — session breakdown by type (serve, footwork, rally, endurance, match)
 - **Sleep tracking** — duration, quality, 7-day debt, and readiness rating
 - **Daily briefing** — `/status briefing` aggregates all data into a single military-style report
@@ -88,11 +88,11 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 |---|---|
 | `/mission start <title>` | Start a new mission |
 | `/mission complete` | Complete and auto-log goal progress |
+| `/mission log <cat> <type> <duration>` | Retroactive activity log (auto-advances linked goals) |
 | `/mission abort` | Mark mission as failed |
 | `/mission extend <duration>` | Add time to ETA |
 | `/mission status` | Show active mission |
 | `/habit category add <name>` | Create a habit category |
-| `/habit log <cat> <type> <duration>` | Retroactive habit log (auto-advances linked goals) |
 | `/habit goal set <cat> <type> <target>` | Give a habit its own goal (e.g. `50h`) |
 | `/habit schedule add <cat> <type> <time> <days>` | Schedule a habit (e.g. `06:00 mon,wed,fri`) |
 | `/habit schedule list` | List active habit schedules |
@@ -119,7 +119,7 @@ Install the skill by copying `skills/ironclaw-ai/SKILL.md` into your OpenClaw sk
 src/
   db/
     connection.ts         # pg.Pool + ioredis singletons
-    migrations/           # 17 SQL migration files
+    migrations/           # 21 SQL migration files
   repositories/           # DB access layer (one class per domain)
   services/               # Business logic layer
   commands/               # Slash command parsers

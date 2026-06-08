@@ -1,6 +1,6 @@
 # IronClaw AI
 
-Military Discipline & Performance Operating System — OpenClaw skill + standalone Node.js/TypeScript service.
+Military Discipline & Performance Operating System — a standalone Node.js/TypeScript service with a built-in Telegram bot.
 
 ## What it does
 
@@ -11,21 +11,23 @@ Military Discipline & Performance Operating System — OpenClaw skill + standalo
 - **Tennis training** — session breakdown by type (serve, footwork, rally, endurance, match)
 - **Sleep tracking** — duration, quality, 7-day debt, and readiness rating
 - **Daily briefing** — `/status briefing` aggregates all data into a single military-style report
-- **OpenClaw skill** — natural language understanding layer + structured command routing
+- **Telegram bot** — inbound chat is handled in-process by the `telegram-listener` worker: a rule-based parser turns free-text messages into mission commands (no external agent required)
 
 ## Architecture
 
 ```
-Telegram → OpenClaw agent
-               ↓ POST /commands
+Telegram ⇄ telegram-listener worker (long-poll getUpdates)
+               ↓ rule-based parse → MissionService
        ironclaw-ai service (Express :3000)
                ↓
           PostgreSQL (17 tables)
-               ↓ ETA expiry jobs
+               ↓ ETA expiry / idle-reminder jobs
           Redis + BullMQ
 ```
 
-All Telegram delivery goes through OpenClaw's existing connection. The service never touches Telegram directly.
+The service talks to Telegram directly: the `telegram-listener` worker polls for inbound
+messages and the worker processes (idle-reminder, eta-worker) post outbound replies via
+the Telegram Bot API. Requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
 
 ## Quick Start
 
@@ -70,6 +72,10 @@ npx ts-node src/schedulers/EtaExpiryWorker.ts
 # (see /habit schedule) is due or already missed today, it sends a loss-aversion
 # nudge naming that habit instead of the generic prompt.
 npm run dev:idle-reminder
+
+# Telegram listener — long-polls inbound messages and registers missions from
+# free-text chat via the rule-based parser (src/nlp/missionParser.ts).
+npx ts-node src/schedulers/TelegramListenerWorker.ts
 ```
 
 ### 6. Health check
@@ -109,9 +115,12 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 
 Returns `{ "status": "ok", "service": "ironclaw-ai", "timestamp": "..." }`
 
-## OpenClaw Skill
+## Telegram
 
-Install the skill by copying `skills/ironclaw-ai/SKILL.md` into your OpenClaw skills directory. Configure `IRONCLAW_SERVICE_URL` in your OpenClaw environment.
+Inbound chat is handled entirely in-process — no external agent or skill to install.
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, then run the `telegram-listener` worker
+(see step 5). It long-polls the Bot API and registers missions from free-text messages via
+the deterministic parser in `src/nlp/missionParser.ts`.
 
 ## Project Structure
 
@@ -123,13 +132,11 @@ src/
   repositories/           # DB access layer (one class per domain)
   services/               # Business logic layer
   commands/               # Slash command parsers
-  schedulers/             # BullMQ workers
-  utils/                  # duration, formatter
+  schedulers/             # BullMQ workers + Telegram listener
+  nlp/                    # rule-based mission message parser
+  utils/                  # duration, formatter, telegram client
   types/                  # TypeScript interfaces
   server.ts               # Express entry point
-skills/
-  ironclaw-ai/
-    SKILL.md              # OpenClaw skill definition
 ```
 
 ## Environment Variables

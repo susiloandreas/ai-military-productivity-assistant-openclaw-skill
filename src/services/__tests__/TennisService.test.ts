@@ -67,7 +67,7 @@ describe('TennisService', () => {
 
   describe('startSession', () => {
     it('starts a mission with tennis category', async () => {
-      missionService.start.mockResolvedValue(makeMission());
+      missionService.start.mockResolvedValue({ mission: makeMission(), heldMission: null });
       const result = await service.startSession('user-1', 'serve', null);
       expect(missionService.start).toHaveBeenCalledWith('user-1', 'Tennis: serve', null, 'tennis');
       expect(result.missionId).toBe('mission-1');

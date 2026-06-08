@@ -1,12 +1,21 @@
 import 'dotenv/config';
 import { getTelegramUpdates, sendTelegramMessage } from '../utils/telegram';
-import { parseMissionMessage } from '../nlp/missionParser';
+import { parseIntent } from '../nlp/missionParser';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { GoalService } from '../services/GoalService';
 import { MissionService } from '../services/MissionService';
-import { formatMinutes } from '../utils/duration';
+import {
+  replyStarted,
+  replyCompleted,
+  replyAborted,
+  replyExtended,
+  replyNeedExtendDuration,
+  replyStatus,
+  replyNotesSaved,
+  replyError,
+} from './telegramReplies';
 import { DEFAULT_USER_ID } from '../types';
 
 // ── Dependency wiring (mirrors server.ts) ────────────────────────────────────
@@ -27,25 +36,78 @@ function isAuthorizedChat(chatId: number | undefined): boolean {
 }
 
 async function handleText(text: string): Promise<void> {
-  const parsed = parseMissionMessage(text);
-  if (!parsed) return; // not a mission request — stay silent
+  const intent = parseIntent(text);
+
+  // A mission is waiting for a "what did you do?" reply (after completion or ETA
+  // expiry). A non-command message is captured as its notes; a command means the
+  // user moved on, so drop the pending prompt and handle the command.
+  const awaiting = await missionService.getMissionAwaitingNotes(DEFAULT_USER_ID);
+  if (awaiting) {
+    if (!intent) {
+      const updated = await missionService.recordNotes(awaiting.id, text.trim());
+      await sendTelegramMessage(replyNotesSaved(updated));
+      console.log(`[Telegram Listener] Saved notes for "${updated.title}"`);
+      return;
+    }
+    await missionService.clearNotesRequest(awaiting.id);
+  }
+
+  if (!intent) return; // not a recognized request — stay silent
 
   try {
-    const mission = await missionService.start(
-      DEFAULT_USER_ID,
-      parsed.title,
-      parsed.etaStr,
-      parsed.categoryName
-    );
-    const lines = [`🎯 <b>Mission registered:</b> ${mission.title}`];
-    if (mission.eta_minutes) lines.push(`ETA: ${formatMinutes(mission.eta_minutes)}`);
-    if (mission.habit_category_id) lines.push(`Category: ${parsed.categoryName}`);
-    await sendTelegramMessage(lines.join('\n'));
-    console.log(`[Telegram Listener] Registered mission "${mission.title}"`);
+    switch (intent.kind) {
+      case 'start': {
+        const { mission, heldMission } = await missionService.start(
+          DEFAULT_USER_ID,
+          intent.title,
+          intent.etaStr,
+          intent.categoryName
+        );
+        await sendTelegramMessage(replyStarted(mission, intent.categoryName, heldMission));
+        console.log(
+          `[Telegram Listener] Started mission "${mission.title}"` +
+            (heldMission ? ` (held "${heldMission.title}")` : '')
+        );
+        break;
+      }
+      case 'complete': {
+        const result = await missionService.complete(DEFAULT_USER_ID, intent.actualStr, null);
+        // Ask what was done; the next free-text reply is captured into notes.
+        await missionService.requestNotes(result.mission.id);
+        await sendTelegramMessage(replyCompleted(result));
+        console.log(`[Telegram Listener] Completed mission "${result.mission.title}"`);
+        break;
+      }
+      case 'abort': {
+        const mission = await missionService.abort(DEFAULT_USER_ID);
+        await sendTelegramMessage(replyAborted(mission));
+        console.log(`[Telegram Listener] Aborted mission "${mission.title}"`);
+        break;
+      }
+      case 'extend': {
+        if (!intent.extendStr) {
+          await sendTelegramMessage(replyNeedExtendDuration());
+          break;
+        }
+        const mission = await missionService.extend(DEFAULT_USER_ID, intent.extendStr);
+        await sendTelegramMessage(replyExtended(mission));
+        console.log(`[Telegram Listener] Extended mission "${mission.title}"`);
+        break;
+      }
+      case 'status': {
+        const [mission, held] = await Promise.all([
+          missionService.getActiveMission(DEFAULT_USER_ID),
+          missionService.getHeldMissions(DEFAULT_USER_ID),
+        ]);
+        await sendTelegramMessage(replyStatus(mission, held));
+        console.log('[Telegram Listener] Reported mission status');
+        break;
+      }
+    }
   } catch (err) {
     const message = (err as Error).message;
-    console.warn(`[Telegram Listener] Could not register mission: ${message}`);
-    await sendTelegramMessage(`⚠ Could not register mission: ${message}`).catch(() => null);
+    console.warn(`[Telegram Listener] ${intent.kind} failed: ${message}`);
+    await sendTelegramMessage(replyError(message)).catch(() => null);
   }
 }
 

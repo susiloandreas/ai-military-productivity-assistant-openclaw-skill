@@ -49,7 +49,7 @@ describe('handleMissionCommand', () => {
 
   describe('start', () => {
     it('starts a mission with title', async () => {
-      service.start.mockResolvedValue(makeMission());
+      service.start.mockResolvedValue({ mission: makeMission(), heldMission: null });
       const output = await handleMissionCommand(
         ['start', 'Write', 'Tests'],
         'user-1',
@@ -60,14 +60,26 @@ describe('handleMissionCommand', () => {
       expect(output).toContain('Write Tests');
     });
 
+    it('reports the held mission when one was put on hold', async () => {
+      service.start.mockResolvedValue({
+        mission: makeMission({ title: 'New Mission' }),
+        heldMission: makeMission({ title: 'Old Mission', status: 'paused' }),
+      });
+      const output = await handleMissionCommand(['start', 'New', 'Mission'], 'user-1', service);
+      expect(output).toContain('On hold: Old Mission');
+    });
+
     it('passes eta flag to service', async () => {
-      service.start.mockResolvedValue(makeMission());
+      service.start.mockResolvedValue({ mission: makeMission(), heldMission: null });
       await handleMissionCommand(['start', 'Tennis', '--eta', '90m'], 'user-1', service);
       expect(service.start).toHaveBeenCalledWith('user-1', 'Tennis', '90m', null);
     });
 
     it('passes category flag to service', async () => {
-      service.start.mockResolvedValue(makeMission({ habit_category_id: 'cat-1' }));
+      service.start.mockResolvedValue({
+        mission: makeMission({ habit_category_id: 'cat-1' }),
+        heldMission: null,
+      });
       await handleMissionCommand(
         ['start', 'Tennis', '--category', 'exercise'],
         'user-1',
@@ -83,10 +95,10 @@ describe('handleMissionCommand', () => {
     });
 
     it('returns error when service throws', async () => {
-      service.start.mockRejectedValue(new Error('Active mission already running'));
+      service.start.mockRejectedValue(new Error('Category "nope" not found.'));
       const output = await handleMissionCommand(['start', 'Test'], 'user-1', service);
       expect(output).toContain('OPERATION FAILED');
-      expect(output).toContain('Active mission already running');
+      expect(output).toContain('Category "nope" not found.');
     });
   });
 

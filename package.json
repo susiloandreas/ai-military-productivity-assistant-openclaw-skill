@@ -12,6 +12,8 @@
     "start:telegram-listener": "node dist/schedulers/TelegramListenerWorker.js",
     "dev:telegram-listener": "ts-node src/schedulers/TelegramListenerWorker.ts",
     "migrate": "ts-node --esm src/utils/migrate.ts",
+    "seed": "ts-node src/utils/seedHabits.ts",
+    "seed:schedules": "ts-node src/utils/seedSchedules.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

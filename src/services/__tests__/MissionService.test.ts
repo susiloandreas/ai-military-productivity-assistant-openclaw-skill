@@ -52,6 +52,10 @@ describe('MissionService', () => {
       extendEta: jest.fn(),
       getRecentCompleted: jest.fn(),
       markEtaExpired: jest.fn(),
+      getHeld: jest.fn(),
+      getAwaitingNotes: jest.fn(),
+      setAwaitingNotes: jest.fn(),
+      appendNotes: jest.fn(),
     } as unknown as jest.Mocked<MissionRepository>;
 
     goalRepo = {
@@ -76,10 +80,11 @@ describe('MissionService', () => {
       missionRepo.getActive.mockResolvedValue(null);
       missionRepo.create.mockResolvedValue(makeMission({ habit_category_id: null }));
 
-      const mission = await service.start('user-1', 'Write API', '1h', null);
+      const { mission, heldMission } = await service.start('user-1', 'Write API', '1h', null);
 
       expect(missionRepo.create).toHaveBeenCalledWith('user-1', 'Write API', null, 60);
       expect(mission.title).toBe('Write API');
+      expect(heldMission).toBeNull();
     });
 
     it('starts a mission with category', async () => {
@@ -93,19 +98,39 @@ describe('MissionService', () => {
       });
       missionRepo.create.mockResolvedValue(makeMission({ habit_category_id: 'cat-1' }));
 
-      const mission = await service.start('user-1', 'Tennis', '90m', 'exercise');
+      const { mission } = await service.start('user-1', 'Tennis', '90m', 'exercise');
 
       expect(habitRepo.getCategoryByName).toHaveBeenCalledWith('user-1', 'exercise');
       expect(missionRepo.create).toHaveBeenCalledWith('user-1', 'Tennis', 'cat-1', 90);
       expect(mission.habit_category_id).toBe('cat-1');
     });
 
-    it('throws when another mission is already active', async () => {
-      missionRepo.getActive.mockResolvedValue(makeMission({ title: 'Existing Mission' }));
-
-      await expect(service.start('user-1', 'New Mission', null, null)).rejects.toThrow(
-        'Active mission already running'
+    it('puts the existing active mission on hold instead of rejecting the new one', async () => {
+      const existing = makeMission({ id: 'old-id', title: 'Existing Mission' });
+      missionRepo.getActive.mockResolvedValue(existing);
+      missionRepo.updateStatus.mockResolvedValue(
+        makeMission({ id: 'old-id', title: 'Existing Mission', status: 'paused' })
       );
+      missionRepo.create.mockResolvedValue(makeMission({ id: 'new-id', title: 'New Mission' }));
+
+      const { mission, heldMission } = await service.start('user-1', 'New Mission', null, null);
+
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith('old-id', 'paused');
+      expect(missionRepo.create).toHaveBeenCalledWith('user-1', 'New Mission', null, null);
+      expect(mission.title).toBe('New Mission');
+      expect(heldMission?.status).toBe('paused');
+      expect(heldMission?.title).toBe('Existing Mission');
+    });
+
+    it('does not hold any mission when the category is invalid', async () => {
+      missionRepo.getActive.mockResolvedValue(makeMission({ title: 'Existing Mission' }));
+      habitRepo.getCategoryByName.mockResolvedValue(null);
+
+      await expect(service.start('user-1', 'New Mission', null, 'nope')).rejects.toThrow(
+        'Category "nope" not found'
+      );
+      expect(missionRepo.updateStatus).not.toHaveBeenCalled();
+      expect(missionRepo.create).not.toHaveBeenCalled();
     });
 
     it('throws when category name not found', async () => {
@@ -115,6 +140,36 @@ describe('MissionService', () => {
       await expect(service.start('user-1', 'Tennis', null, 'nonexistent')).rejects.toThrow(
         'Category "nonexistent" not found'
       );
+    });
+  });
+
+  describe('notes follow-up', () => {
+    it('flags a mission to await notes', async () => {
+      await service.requestNotes('m-1');
+      expect(missionRepo.setAwaitingNotes).toHaveBeenCalledWith('m-1', true);
+    });
+
+    it('clears a pending notes request', async () => {
+      await service.clearNotesRequest('m-1');
+      expect(missionRepo.setAwaitingNotes).toHaveBeenCalledWith('m-1', false);
+    });
+
+    it('records notes via the repository', async () => {
+      const updated = makeMission({ notes: 'fixed the parser' });
+      missionRepo.appendNotes.mockResolvedValue(updated);
+
+      const result = await service.recordNotes('m-1', 'fixed the parser');
+
+      expect(missionRepo.appendNotes).toHaveBeenCalledWith('m-1', 'fixed the parser');
+      expect(result.notes).toBe('fixed the parser');
+    });
+
+    it('returns the mission awaiting notes', async () => {
+      const awaiting = makeMission({ awaiting_notes: true });
+      missionRepo.getAwaitingNotes.mockResolvedValue(awaiting);
+
+      expect(await service.getMissionAwaitingNotes('user-1')).toBe(awaiting);
+      expect(missionRepo.getAwaitingNotes).toHaveBeenCalledWith('user-1');
     });
   });
 

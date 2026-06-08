@@ -1,4 +1,4 @@
-import { parseMissionMessage } from '../missionParser';
+import { parseMissionMessage, parseIntent } from '../missionParser';
 import { parseDurationToMinutes } from '../../utils/duration';
 
 describe('parseMissionMessage', () => {
@@ -82,5 +82,93 @@ describe('parseMissionMessage', () => {
 
   it('is case-insensitive on the trigger', () => {
     expect(parseMissionMessage('START emails')?.title).toBe('emails');
+  });
+
+  it('strips a leading slash command and bot mention', () => {
+    expect(parseMissionMessage('/mission start openclaw 1h')).toEqual({
+      title: 'openclaw',
+      etaStr: '1h',
+      categoryName: null,
+    });
+    expect(parseMissionMessage('/mission@IronClawBot start review PR')?.title).toBe('review PR');
+  });
+
+  it('understands "misi" as an Indonesian start trigger', () => {
+    expect(parseMissionMessage('misi coding 1h')).toEqual({
+      title: 'coding',
+      etaStr: '1h',
+      categoryName: null,
+    });
+  });
+
+  it('expands Indonesian duration words (sejam / setengah jam)', () => {
+    expect(parseDurationToMinutes(parseMissionMessage('mulai meeting sejam')!.etaStr!)).toBe(60);
+    expect(parseDurationToMinutes(parseMissionMessage('mulai stretching setengah jam')!.etaStr!)).toBe(30);
+  });
+
+  it('handles duration-led Indonesian future intent', () => {
+    expect(parseMissionMessage('50 menit ke depan akan pulang')).toEqual({
+      title: 'pulang',
+      etaStr: '50m',
+      categoryName: null,
+    });
+    expect(parseMissionMessage('30 menit lagi makan siang')?.title).toBe('makan siang');
+    expect(parseMissionMessage('sejam ke depan akan meeting')?.etaStr).toBe('1h');
+  });
+
+  it('fires soft triggers only when a duration is present', () => {
+    expect(parseMissionMessage('mau tanya dong')).toBeNull();
+    expect(parseMissionMessage('mau pulang sejam lagi')).toEqual({
+      title: 'pulang',
+      etaStr: '1h',
+      categoryName: null,
+    });
+  });
+});
+
+describe('parseIntent', () => {
+  it('classifies a start intent', () => {
+    expect(parseIntent('start coding the parser for 2h')).toEqual({
+      kind: 'start',
+      title: 'coding the parser',
+      etaStr: '2h',
+      categoryName: null,
+    });
+  });
+
+  it('classifies completion confirmations (EN + ID), with optional duration', () => {
+    expect(parseIntent('done')).toEqual({ kind: 'complete', actualStr: null });
+    expect(parseIntent('selesai')).toEqual({ kind: 'complete', actualStr: null });
+    expect(parseIntent('udah kelar 45 menit')).toEqual({ kind: 'complete', actualStr: '45m' });
+    expect(parseIntent('/mission complete')).toEqual({ kind: 'complete', actualStr: null });
+  });
+
+  it('does not treat "complete <title>" as a completion', () => {
+    expect(parseIntent('complete the auth refactor')).toBeNull();
+  });
+
+  it('classifies abort intents', () => {
+    expect(parseIntent('abort')).toEqual({ kind: 'abort' });
+    expect(parseIntent('batalkan misi')).toEqual({ kind: 'abort' });
+    expect(parseIntent('stop')).toEqual({ kind: 'abort' });
+  });
+
+  it('classifies extend intents and pulls the duration', () => {
+    expect(parseIntent('extend 30m')).toEqual({ kind: 'extend', extendStr: '30m' });
+    expect(parseIntent('tambahin 30 menit')).toEqual({ kind: 'extend', extendStr: '30m' });
+    expect(parseIntent('perpanjang sejam')).toEqual({ kind: 'extend', extendStr: '1h' });
+    expect(parseIntent('extend')).toEqual({ kind: 'extend', extendStr: null });
+  });
+
+  it('classifies status queries by whole-message match', () => {
+    expect(parseIntent('status')).toEqual({ kind: 'status' });
+    expect(parseIntent('misi')).toEqual({ kind: 'status' });
+    expect(parseIntent('lagi ngapain?')).toEqual({ kind: 'status' });
+    // not a status query — has a title, so it's a start
+    expect(parseIntent('misi coding 1h')?.kind).toBe('start');
+  });
+
+  it('returns null for unrelated chatter', () => {
+    expect(parseIntent('how is the weather today')).toBeNull();
   });
 });

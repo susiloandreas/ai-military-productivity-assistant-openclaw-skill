@@ -29,10 +29,11 @@ export async function handleMissionCommand(
           .join(' ')
           .trim();
         if (!title) return formatError('Mission title required. Usage: /mission start <title>');
-        const mission = await service.start(userId, title, eta, category);
+        const { mission, heldMission } = await service.start(userId, title, eta, category);
         const lines = [`Title: ${mission.title}`];
         if (mission.eta_minutes) lines.push(`ETA: ${formatMinutes(mission.eta_minutes)}`);
         if (mission.habit_category_id) lines.push(`Category linked`);
+        if (heldMission) lines.push(`On hold: ${heldMission.title} (resume after this)`);
         return formatSuccess('MISSION INITIATED', lines);
       }
 

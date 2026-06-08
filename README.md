@@ -11,7 +11,7 @@ Military Discipline & Performance Operating System — a standalone Node.js/Type
 - **Tennis training** — session breakdown by type (serve, footwork, rally, endurance, match)
 - **Sleep tracking** — duration, quality, 7-day debt, and readiness rating
 - **Daily briefing** — `/status briefing` aggregates all data into a single military-style report
-- **Telegram bot** — inbound chat is handled in-process by the `telegram-listener` worker: a rule-based parser turns free-text messages into mission commands (no external agent required)
+- **Telegram bot** — inbound chat is handled in-process by the `telegram-listener` worker: a rule-based (no-AI) parser classifies free-text messages into mission intents — **start / complete / abort / extend / status** — in English and Indonesian, and replies in varied military-coaching tone (no external agent required)
 
 ## Architecture
 
@@ -119,8 +119,28 @@ Returns `{ "status": "ok", "service": "ironclaw-ai", "timestamp": "..." }`
 
 Inbound chat is handled entirely in-process — no external agent or skill to install.
 Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, then run the `telegram-listener` worker
-(see step 5). It long-polls the Bot API and registers missions from free-text messages via
-the deterministic parser in `src/nlp/missionParser.ts`.
+(see step 5). It long-polls the Bot API and routes each message through the deterministic
+(no-AI) parser in `src/nlp/missionParser.ts`, which classifies it into a mission intent and
+extracts its slots. Replies are drawn from randomized military-tone copy pools in
+`src/schedulers/telegramReplies.ts`.
+
+Understood intents (EN + ID), with or without a leading slash (`/mission start …` works too):
+
+| Intent | Examples |
+|---|---|
+| **start** | `start coding for 2h`, `mulai latihan tenis 1 jam #tennis`, `50 menit ke depan akan pulang`, `mau pulang sejam lagi` |
+| **complete** | `done`, `selesai`, `udah kelar 45 menit`, `mission complete` |
+| **abort** | `abort`, `batalkan misi`, `stop` |
+| **extend** | `extend 30m`, `tambahin 30 menit`, `perpanjang 1 jam` |
+| **status** | `status`, `misi`, `lagi ngapain`, `what am I working on` |
+
+**Starting a mission while one is already active** no longer fails — the current mission is put
+**on hold** (status `paused`, its ETA timer cancelled) and the new one starts. The reply reminds
+you of the held mission, and `status` lists everything still on hold so nothing gets forgotten.
+
+Anything it doesn't recognize is ignored silently. Note this is intentionally rule-based — it
+trades an LLM's flexibility for determinism, zero cost, and full unit-test coverage. "Soft" ID
+verbs (`mau`/`akan`/`bakal`) only fire when a duration is present, to avoid spurious missions.
 
 ## Project Structure
 

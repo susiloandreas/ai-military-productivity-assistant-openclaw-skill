@@ -49,6 +49,16 @@ export class MissionRepository {
     return rows[0] ?? null;
   }
 
+  /** Missions currently on hold (paused), most-recently-held first. */
+  async getHeld(userId: string): Promise<Mission[]> {
+    const { rows } = await pool.query<Mission>(
+      `SELECT * FROM missions WHERE user_id = $1 AND status = 'paused'
+       ORDER BY paused_at DESC NULLS LAST, started_at DESC`,
+      [userId]
+    );
+    return rows;
+  }
+
   async getById(id: string): Promise<Mission | null> {
     const { rows } = await pool.query<Mission>('SELECT * FROM missions WHERE id = $1', [id]);
     return rows[0] ?? null;
@@ -123,11 +133,48 @@ export class MissionRepository {
     return rows;
   }
 
-  async markEtaExpired(id: string): Promise<void> {
-    await pool.query(
-      `UPDATE missions SET status = 'eta_expired' WHERE id = $1 AND status = 'active'`,
+  /**
+   * Mark an active mission as ETA-expired and flag it for a notes follow-up.
+   * Returns the updated mission, or null if it was no longer active (e.g. already
+   * completed or aborted before the timer fired).
+   */
+  async markEtaExpired(id: string): Promise<Mission | null> {
+    const { rows } = await pool.query<Mission>(
+      `UPDATE missions SET status = 'eta_expired', awaiting_notes = TRUE
+       WHERE id = $1 AND status = 'active' RETURNING *`,
       [id]
     );
+    return rows[0] ?? null;
+  }
+
+  /** The most recent mission waiting for a "what did you do?" reply, if any. */
+  async getAwaitingNotes(userId: string): Promise<Mission | null> {
+    const { rows } = await pool.query<Mission>(
+      `SELECT * FROM missions
+       WHERE user_id = $1 AND awaiting_notes = TRUE
+       ORDER BY COALESCE(completed_at, started_at) DESC LIMIT 1`,
+      [userId]
+    );
+    return rows[0] ?? null;
+  }
+
+  async setAwaitingNotes(id: string, value: boolean): Promise<void> {
+    await pool.query(`UPDATE missions SET awaiting_notes = $2 WHERE id = $1`, [id, value]);
+  }
+
+  /** Append the user's reply to notes and clear the awaiting flag. */
+  async appendNotes(id: string, notes: string): Promise<Mission> {
+    const { rows } = await pool.query<Mission>(
+      `UPDATE missions
+       SET notes = CASE
+             WHEN notes IS NULL OR notes = '' THEN $2
+             ELSE notes || E'\n' || $2
+           END,
+           awaiting_notes = FALSE
+       WHERE id = $1 RETURNING *`,
+      [id, notes]
+    );
+    return rows[0];
   }
 
   /** Habit type ids the user has logged a mission for on or after `since` (used for "logged today"). */

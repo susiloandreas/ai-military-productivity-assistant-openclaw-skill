@@ -3,7 +3,7 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/skills'],
+  roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.ts', '**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js'],
   transform: {
@@ -17,6 +17,8 @@ const config: Config = {
     '!src/server.ts',
     '!src/schedulers/**',
     '!src/utils/migrate.ts',
+    '!src/utils/seedHabits.ts',
+    '!src/utils/seedSchedules.ts',
   ],
   coverageThreshold: {
     global: { lines: 70 },

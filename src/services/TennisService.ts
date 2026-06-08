@@ -22,7 +22,7 @@ export class TennisService {
     etaStr: string | null
   ): Promise<{ missionId: string }> {
     const title = `Tennis: ${sessionType}`;
-    const mission = await this.missionService.start(userId, title, etaStr, TENNIS_CATEGORY);
+    const { mission } = await this.missionService.start(userId, title, etaStr, TENNIS_CATEGORY);
     return { missionId: mission.id };
   }
 

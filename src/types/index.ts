@@ -99,6 +99,8 @@ export interface Mission {
   paused_at: Date | null;
   actual_duration_minutes: number | null;
   notes: string | null;
+  /** True while waiting for the user's "what did you do?" reply (→ notes). */
+  awaiting_notes?: boolean;
   created_at: Date;
 }
 

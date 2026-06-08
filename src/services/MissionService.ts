@@ -12,6 +12,12 @@ export interface MissionCompleteResult {
   goalProgress: ProgressResult | null;
 }
 
+export interface MissionStartResult {
+  mission: Mission;
+  /** The previously-active mission that was put on hold to make room, if any. */
+  heldMission: Mission | null;
+}
+
 export interface RetroactiveLogResult {
   mission: Mission;
   /** Progress on the goal tied to this specific habit type, if one is active. */
@@ -37,14 +43,9 @@ export class MissionService {
     title: string,
     etaStr: string | null,
     categoryName: string | null
-  ): Promise<Mission> {
-    const existing = await this.missionRepo.getActive(userId);
-    if (existing) {
-      throw new Error(
-        `Active mission already running: "${existing.title}". Complete or abort it first.`
-      );
-    }
-
+  ): Promise<MissionStartResult> {
+    // Resolve inputs that can fail *before* touching any existing mission, so a
+    // bad category/duration never leaves the user with a held-but-no-active state.
     let habitCategoryId: string | null = null;
     if (categoryName) {
       const category = await this.habitRepo.getCategoryByName(userId, categoryName);
@@ -53,8 +54,17 @@ export class MissionService {
       }
       habitCategoryId = category.id;
     }
-
     const etaMinutes = etaStr ? parseDurationToMinutes(etaStr) : null;
+
+    // A mission is already live — put it on hold instead of rejecting the new
+    // one. Its ETA timer is cancelled while paused; the user is reminded of it.
+    let heldMission: Mission | null = null;
+    const existing = await this.missionRepo.getActive(userId);
+    if (existing) {
+      await this.etaQueue.remove(`eta-${existing.id}`).catch(() => null);
+      heldMission = await this.missionRepo.updateStatus(existing.id, 'paused');
+    }
+
     const mission = await this.missionRepo.create(userId, title, habitCategoryId, etaMinutes);
 
     if (etaMinutes) {
@@ -65,7 +75,7 @@ export class MissionService {
       );
     }
 
-    return mission;
+    return { mission, heldMission };
   }
 
   async complete(
@@ -187,6 +197,31 @@ export class MissionService {
 
   async getActiveMission(userId: string): Promise<Mission | null> {
     return this.missionRepo.getActive(userId);
+  }
+
+  /** Missions put on hold by a later `start`, most-recently-held first. */
+  async getHeldMissions(userId: string): Promise<Mission[]> {
+    return this.missionRepo.getHeld(userId);
+  }
+
+  /** The mission currently waiting for a "what did you do?" reply, if any. */
+  async getMissionAwaitingNotes(userId: string): Promise<Mission | null> {
+    return this.missionRepo.getAwaitingNotes(userId);
+  }
+
+  /** Flag a mission to ask the user what they did (captured into notes next). */
+  async requestNotes(missionId: string): Promise<void> {
+    await this.missionRepo.setAwaitingNotes(missionId, true);
+  }
+
+  /** Stop waiting for notes without recording any (user moved on). */
+  async clearNotesRequest(missionId: string): Promise<void> {
+    await this.missionRepo.setAwaitingNotes(missionId, false);
+  }
+
+  /** Record the user's reply into the mission's notes and clear the flag. */
+  async recordNotes(missionId: string, notes: string): Promise<Mission> {
+    return this.missionRepo.appendNotes(missionId, notes);
   }
 
   async getRecentCompleted(userId: string, days = 7): Promise<Mission[]> {

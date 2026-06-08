@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "start:idle-reminder": "node dist/schedulers/IdleReminderWorker.js",
     "dev:idle-reminder": "ts-node src/schedulers/IdleReminderWorker.ts",
+    "start:telegram-listener": "node dist/schedulers/TelegramListenerWorker.js",
+    "dev:telegram-listener": "ts-node src/schedulers/TelegramListenerWorker.ts",
     "migrate": "ts-node --esm src/utils/migrate.ts",
     "test": "jest",
     "test:watch": "jest --watch",

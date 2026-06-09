@@ -2,10 +2,13 @@ import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { redisConnection } from '../db/connection';
 import { MissionRepository } from '../repositories/MissionRepository';
+import { NotificationRepository } from '../repositories/NotificationRepository';
 import { sendTelegramMessage } from '../utils/telegram';
 import { replyEtaExpiredAskNotes } from './telegramReplies';
+import { DEFAULT_USER_ID } from '../types';
 
 const missionRepo = new MissionRepository();
+const notificationRepo = new NotificationRepository();
 
 const worker = new Worker(
   'eta-expiry',
@@ -22,6 +25,8 @@ const worker = new Worker(
     await sendTelegramMessage(replyEtaExpiredAskNotes(mission)).catch(err =>
       console.warn(`[ETA Worker] Could not send ETA prompt: ${(err as Error).message}`)
     );
+    // Stamp the follow-up clock so the 5-min re-ask loop spaces off this send.
+    await notificationRepo.record(DEFAULT_USER_ID, 'eta_followup');
   },
   { connection: redisConnection }
 );

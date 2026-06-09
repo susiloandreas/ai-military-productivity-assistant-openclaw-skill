@@ -121,7 +121,8 @@ export class GoalService {
       `${habitTypeName} goal`,
       null,
       deadline,
-      habitType.id
+      habitType.id,
+      targetMinutes / 60
     );
     const milestone = await this.goalRepo.addMilestone(
       goal.id,

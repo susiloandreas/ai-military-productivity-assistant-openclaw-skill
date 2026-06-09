@@ -24,6 +24,8 @@ export interface Goal {
   habit_type_id: string | null; // when set, the goal targets a specific habit type
   title: string;
   target_description: string | null;
+  /** Hours of logged duration the goal must accumulate to be achieved. */
+  target_hours?: number | null;
   deadline: Date | null;
   status: GoalStatus;
   created_at: Date;

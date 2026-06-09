@@ -10,12 +10,13 @@ export class GoalRepository {
     title: string,
     targetDescription: string | null,
     deadline: Date | null,
-    habitTypeId: string | null = null
+    habitTypeId: string | null = null,
+    targetHours: number | null = null
   ): Promise<Goal> {
     const { rows } = await pool.query<Goal>(
-      `INSERT INTO goals (user_id, habit_category_id, title, target_description, deadline, habit_type_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [userId, habitCategoryId, title, targetDescription, deadline, habitTypeId]
+      `INSERT INTO goals (user_id, habit_category_id, title, target_description, deadline, habit_type_id, target_hours)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [userId, habitCategoryId, title, targetDescription, deadline, habitTypeId, targetHours]
     );
     return rows[0];
   }

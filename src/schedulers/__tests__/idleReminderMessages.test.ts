@@ -1,6 +1,7 @@
 import {
   selectDueHabits,
   buildHabitLossAversionMessage,
+  buildHeldMissionReminder,
   randomIdleMessage,
   findSeharusnyaHabit,
   buildGenericIdleMessage,
@@ -175,6 +176,21 @@ describe('buildGenericIdleMessage', () => {
     const ctaIdx = msg.indexOf('WAJIB');
     expect(seharusnyaIdx).toBeGreaterThan(0);
     expect(seharusnyaIdx).toBeLessThan(ctaIdx);
+  });
+});
+
+describe('buildHeldMissionReminder', () => {
+  const rng = () => 0;
+
+  it('returns null when nothing is held', () => {
+    expect(buildHeldMissionReminder([], rng)).toBeNull();
+  });
+
+  it('lists held missions with a loss-aversion nudge', () => {
+    const msg = buildHeldMissionReminder([{ title: 'Refactor' }, { title: 'Read paper' }], rng)!;
+    expect(msg).toContain('Refactor');
+    expect(msg).toContain('Read paper');
+    expect(msg).toMatch(/lanjutkan|batalkan/i);
   });
 });
 

@@ -76,6 +76,10 @@ npm run dev:idle-reminder
 # Telegram listener — long-polls inbound messages and registers missions from
 # free-text chat via the rule-based parser (src/nlp/missionParser.ts).
 npx ts-node src/schedulers/TelegramListenerWorker.ts
+
+# Coaching — brief Gemini-generated coaching at 07:00 / 13:00 / 23:00 (TZ),
+# grounded in your current mission + habit state. Needs GEMINI_API_KEY.
+npm run dev:coaching
 ```
 
 ### 6. Health check
@@ -114,6 +118,20 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 ### GET /health
 
 Returns `{ "status": "ok", "service": "ironclaw-ai", "timestamp": "..." }`
+
+## Coaching (Gemini)
+
+The `coaching` worker sends a **brief** Indonesian military-style coaching message
+three times a day — **07:00 (pagi), 13:00 (siang), 23:00 (malam)** in `TZ` — generated
+by **Google Gemini** and grounded in your live state: active/held missions, what you've
+completed today, 7-day momentum, and any scheduled habits due or already missed. Every
+message is prompted to **membangkitkan semangat** (fire up motivation) and **menumbuhkan
+rasa takut kehilangan mimpi** (loss aversion — fear of losing the dream).
+
+Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-flash`). If the
+key is missing or the API fails, it falls back to a static slot-specific message, so a
+nudge always lands. The LLM call is isolated in `src/utils/gemini.ts` and the prompt /
+context in `src/schedulers/coachingContext.ts`, so the provider is easy to swap.
 
 ## Telegram
 

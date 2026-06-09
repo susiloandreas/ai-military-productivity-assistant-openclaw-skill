@@ -52,6 +52,32 @@ export function randomIdleMessage(rng: Rng = Math.random): string {
   return pick(IDLE_MESSAGES, rng);
 }
 
+// ── Held (on-hold) mission reminder ──────────────────────────────────────────
+const HELD_HEADERS = [
+  '⏸️ <b>MISI TERTUNDA MENUNGGU KAMU</b>',
+  '🪖 <b>ADA MISI YANG KAMU GANTUNG</b>',
+  '⚠️ <b>JANGAN BIARKAN MISI INI TERLANTAR</b>',
+];
+
+const HELD_CLOSERS = [
+  'Misi yang digantung itu mimpi yang ditunda. Tutup sekarang sebelum lupa.',
+  'Setiap misi tertunda menambah beban mental. Selesaikan atau batalkan dengan sadar.',
+  'Disiplin = menutup yang sudah kamu mulai. Lanjutkan salah satunya sekarang.',
+];
+
+/**
+ * Reminder about missions put on hold (paused) that are still open. Returns null
+ * when nothing is held. Caller is responsible for rate-limiting.
+ */
+export function buildHeldMissionReminder(
+  held: { title: string }[],
+  rng: Rng = Math.random
+): string | null {
+  if (held.length === 0) return null;
+  const list = held.map(m => `⏸️ <b>${m.title}</b>`).join('\n');
+  return `${pick(HELD_HEADERS, rng)}\n\n${list}\n\n${pick(HELD_CLOSERS, rng)}\n\n<b>AKSI:</b> Lanjutkan (mulai lagi) atau batalkan misi di atas.`;
+}
+
 const MISSED_HEADERS = [
   '☠️ <b>KAMU GAGAL MENEPATI JADWAL HARI INI</b>',
   '💀 <b>KOMITMEN KAMU SEDANG SEKARAT</b>',

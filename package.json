@@ -11,9 +11,12 @@
     "dev:idle-reminder": "ts-node src/schedulers/IdleReminderWorker.ts",
     "start:telegram-listener": "node dist/schedulers/TelegramListenerWorker.js",
     "dev:telegram-listener": "ts-node src/schedulers/TelegramListenerWorker.ts",
+    "start:coaching": "node dist/schedulers/CoachingWorker.js",
+    "dev:coaching": "ts-node src/schedulers/CoachingWorker.ts",
     "migrate": "ts-node --esm src/utils/migrate.ts",
     "seed": "ts-node src/utils/seedHabits.ts",
     "seed:schedules": "ts-node src/utils/seedSchedules.ts",
+    "seed:goals": "ts-node src/utils/seedGoals.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

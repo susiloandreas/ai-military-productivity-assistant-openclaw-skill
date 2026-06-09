@@ -19,6 +19,8 @@ const config: Config = {
     '!src/utils/migrate.ts',
     '!src/utils/seedHabits.ts',
     '!src/utils/seedSchedules.ts',
+    '!src/utils/seedGoals.ts',
+    '!src/utils/gemini.ts',
   ],
   coverageThreshold: {
     global: { lines: 70 },

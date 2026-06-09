@@ -188,6 +188,18 @@ export class MissionRepository {
     return rows.map(r => r.habit_type_id);
   }
 
+  /** Habit type ids logged within [start, end) — used for "logged yesterday". */
+  async getHabitTypeIdsLoggedBetween(userId: string, start: Date, end: Date): Promise<string[]> {
+    const { rows } = await pool.query<{ habit_type_id: string }>(
+      `SELECT DISTINCT habit_type_id FROM missions
+       WHERE user_id = $1 AND habit_type_id IS NOT NULL
+         AND ((started_at >= $2 AND started_at < $3)
+              OR (completed_at >= $2 AND completed_at < $3))`,
+      [userId, start, end]
+    );
+    return rows.map(r => r.habit_type_id);
+  }
+
   /** 7-day total of retroactively-logged minutes per habit category (drives /habit summary). */
   async getWeeklyCategorySummary(
     userId: string

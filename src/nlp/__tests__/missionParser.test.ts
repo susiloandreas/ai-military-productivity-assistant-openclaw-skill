@@ -189,6 +189,14 @@ describe('parseIntent', () => {
     expect(parseIntent('mulai habit reading 30m')?.kind).toBe('start');
   });
 
+  it('classifies brief queries by whole-message match', () => {
+    expect(parseIntent('brief')).toEqual({ kind: 'brief' });
+    expect(parseIntent('/brief')).toEqual({ kind: 'brief' });
+    expect(parseIntent('pengarahan')).toEqual({ kind: 'brief' });
+    // a start that merely contains "brief" is not the brief query
+    expect(parseIntent('mulai brief tim 15m')?.kind).toBe('start');
+  });
+
   it('returns null for unrelated chatter', () => {
     expect(parseIntent('how is the weather today')).toBeNull();
   });

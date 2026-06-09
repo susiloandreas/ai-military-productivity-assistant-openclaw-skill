@@ -3,28 +3,13 @@ import { MissionRepository } from '../repositories/MissionRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { NotificationRepository } from '../repositories/NotificationRepository';
 import { sendTelegramMessage } from '../utils/telegram';
-import { generateText } from '../utils/gemini';
-import {
-  COACHING_HOURS,
-  slotForHour,
-  nextRunDelayMs,
-  buildCoachingContext,
-  buildCoachingPrompt,
-  fallbackCoaching,
-  coachingDedupKey,
-  selectYesterdayHabits,
-} from './coachingContext';
+import { COACHING_HOURS, slotForHour, nextRunDelayMs, coachingDedupKey } from './coachingContext';
+import { composeCoaching } from './composeCoaching';
 import { DEFAULT_USER_ID } from '../types';
 
 const missionRepo = new MissionRepository();
 const habitRepo = new HabitRepository();
 const notificationRepo = new NotificationRepository();
-
-function startOfToday(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 /** Build context, ask Gemini for a brief coaching message, deliver via Telegram. */
 async function runCoaching(hour: number): Promise<void> {
@@ -38,43 +23,8 @@ async function runCoaching(hour: number): Promise<void> {
     return;
   }
 
-  const [activeMission, held, recentCompleted, schedules, loggedTypeIds] = await Promise.all([
-    missionRepo.getActive(DEFAULT_USER_ID),
-    missionRepo.getHeld(DEFAULT_USER_ID),
-    missionRepo.getRecentCompleted(DEFAULT_USER_ID, 7),
-    habitRepo.getActiveSchedules(DEFAULT_USER_ID),
-    missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now)),
-  ]);
-
-  // Morning slot reviews yesterday's habits (loss-aversion + what to improve).
-  let yesterday = null;
-  if (slot === 'pagi') {
-    const yStart = startOfToday(now);
-    yStart.setDate(yStart.getDate() - 1);
-    const yEnd = startOfToday(now);
-    const loggedYesterday = await missionRepo.getHabitTypeIdsLoggedBetween(DEFAULT_USER_ID, yStart, yEnd);
-    yesterday = selectYesterdayHabits(schedules, new Set(loggedYesterday), now);
-  }
-
-  const ctx = buildCoachingContext({
-    slot,
-    activeMission,
-    held,
-    recentCompleted,
-    schedules,
-    loggedTypeIds: new Set(loggedTypeIds),
-    now,
-    yesterday,
-  });
-
-  let message: string;
-  try {
-    message = await generateText(buildCoachingPrompt(ctx));
-    console.log(`[Coaching] ${now.toISOString()} — ${slot} coaching via Gemini`);
-  } catch (err) {
-    message = fallbackCoaching(ctx);
-    console.warn(`[Coaching] Gemini unavailable (${(err as Error).message}) — using fallback`);
-  }
+  const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slot, now);
+  console.log(`[Coaching] ${now.toISOString()} — sent ${slot} coaching`);
 
   await sendTelegramMessage(message).catch(err =>
     console.warn(`[Coaching] Could not deliver message: ${(err as Error).message}`)

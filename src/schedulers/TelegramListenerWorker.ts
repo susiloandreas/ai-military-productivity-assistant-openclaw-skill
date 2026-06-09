@@ -22,6 +22,8 @@ import {
   replyError,
 } from './telegramReplies';
 import { AbortNeedsTargetError } from '../services/MissionService';
+import { composeCoaching } from './composeCoaching';
+import { slotForHour } from './coachingContext';
 import { DEFAULT_USER_ID } from '../types';
 
 /** Local midnight for "logged today" lookups. */
@@ -146,6 +148,15 @@ async function handleText(text: string): Promise<void> {
         ]);
         await sendTelegramMessage(replyHabitsToday(schedules, new Set(loggedTypeIds), now));
         console.log("[Telegram Listener] Reported today's habits");
+        break;
+      }
+      case 'brief': {
+        // Same coaching engine as the scheduled briefs; slot follows the hour,
+        // so a morning brief includes the yesterday review + 7-day habit metrics.
+        const now = new Date();
+        const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now);
+        await sendTelegramMessage(message);
+        console.log('[Telegram Listener] Sent on-demand brief');
         break;
       }
     }

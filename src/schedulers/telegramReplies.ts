@@ -269,6 +269,7 @@ export function replyHelp(): string {
 ❌ <b>Batalkan</b> — <i>"batalkan misi"</i>
 📊 <b>Status misi</b> — <i>"status"</i>
 📋 <b>Kebiasaan hari ini</b> — <i>"kebiasaan"</i>
+📨 <b>Pengarahan</b> — <i>"brief"</i>
 🆘 <b>Bantuan</b> — <i>"help"</i>
 
 Tulis dalam bahasa biasa — tidak perlu format kaku.`;

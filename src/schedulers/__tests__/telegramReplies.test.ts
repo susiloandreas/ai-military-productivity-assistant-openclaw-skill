@@ -164,6 +164,7 @@ describe('telegramReplies', () => {
     expect(help).toMatch(/selesai/i);
     expect(help).toMatch(/status/i);
     expect(help).toMatch(/kebiasaan/i);
+    expect(help).toMatch(/brief/i);
   });
 });
 

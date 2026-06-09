@@ -30,7 +30,8 @@ export type ParsedIntent =
   | { kind: 'extend'; extendStr: string | null }
   | { kind: 'status' }
   | { kind: 'help' }
-  | { kind: 'habits' };
+  | { kind: 'habits' }
+  | { kind: 'brief' };
 
 // ── Triggers ──────────────────────────────────────────────────────────────
 // "Strong" start verbs fire on their own. Checked longest-first so
@@ -150,6 +151,16 @@ const HABITS_PHRASES = new Set([
   'list habit',
   'habit list',
   'today habits',
+]);
+
+// On-demand coaching brief for the current time of day — whole-message match.
+const BRIEF_PHRASES = new Set([
+  'brief',
+  'briefing',
+  'pengarahan',
+  'coaching',
+  'coach',
+  'motivasi',
 ]);
 
 // Connector words stripped before/after a duration or at the title edges.
@@ -300,6 +311,7 @@ export function parseIntent(raw: string): ParsedIntent | null {
   // Help and today's-habits queries — whole-message matches.
   if (HELP_PHRASES.has(lower)) return { kind: 'help' };
   if (HABITS_PHRASES.has(lower)) return { kind: 'habits' };
+  if (BRIEF_PHRASES.has(lower)) return { kind: 'brief' };
 
   // Complete — a confirmation with nothing left over but an optional duration.
   const completeTrigger = matchTrigger(lower, COMPLETE_TRIGGERS);

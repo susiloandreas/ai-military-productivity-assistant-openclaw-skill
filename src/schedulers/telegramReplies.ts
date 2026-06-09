@@ -100,10 +100,48 @@ const ETA_EXPIRED_HEADERS = [
   '⌛ <b>BATAS WAKTU TERCAPAI</b>',
 ];
 
-/** Sent by the ETA worker when a mission's timer expires — asks for notes. */
+const RESOLVE_INSTRUCTION =
+  'Lapor sekarang: <b>status + catatan</b> dalam satu pesan.\n' +
+  '✅ <i>selesai, &lt;apa yang kamu kerjakan&gt;</i>\n' +
+  '❌ <i>belum, &lt;kenapa / sampai mana&gt;</i>';
+
+/**
+ * Sent by the ETA worker when a mission's timer expires — the user MUST reply
+ * with a completion status (done / not done) AND notes.
+ */
 export function replyEtaExpiredAskNotes(mission: Mission, rng: Rng = Math.random): string {
   const eta = mission.eta_minutes != null ? ` (ETA ${formatMinutes(mission.eta_minutes)})` : '';
-  return `${pick(ETA_EXPIRED_HEADERS, rng)}\n\n📌 <b>${mission.title}</b>${eta}\n\n${pick(ASK_NOTES, rng)}`;
+  return `${pick(ETA_EXPIRED_HEADERS, rng)}\n\n📌 <b>${mission.title}</b>${eta}\n\n${RESOLVE_INSTRUCTION}`;
+}
+
+/** Re-prompt when the expiry reply is missing the status and/or the notes. */
+export function replyExpiryNeedsBoth(): string {
+  return `⚠️ Butuh <b>dua-duanya</b>: status DAN catatan.\n\n${RESOLVE_INSTRUCTION}`;
+}
+
+/** Confirmation after an expired mission is resolved as completed / not completed. */
+export function replyExpiryResolved(result: MissionCompleteResult, rng: Rng = Math.random): string {
+  const { mission, goalProgress } = result;
+  const done = mission.status === 'completed';
+  const header = done
+    ? '✅ <b>DITUTUP: SELESAI</b>'
+    : '❌ <b>DITUTUP: TIDAK SELESAI</b>';
+  const lines = [`📌 <b>${mission.title}</b>`];
+  if (done && mission.actual_duration_minutes != null) {
+    lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
+  }
+  if (mission.notes) lines.push(`📝 ${mission.notes}`);
+  if (done && goalProgress) {
+    if (goalProgress.goalCompleted) lines.push(`🏆 GOAL TUNTAS: <b>${goalProgress.goal.title}</b>`);
+    else if (goalProgress.milestonesUnlocked.length > 0) {
+      lines.push(`🚩 Milestone: ${goalProgress.milestonesUnlocked.map(m => m.title).join(', ')}`);
+    }
+    lines.push(`📈 Progress goal: ${formatMinutes(goalProgress.totalProgress)}`);
+  }
+  const closer = done
+    ? pick(COMPLETED_CLOSERS, rng)
+    : 'Tidak apa gagal sekali — yang fatal itu berhenti. Tentukan langkah berikutnya.';
+  return `${header}\n\n${lines.join('\n')}\n\n${closer}`;
 }
 
 const NOTES_SAVED = [

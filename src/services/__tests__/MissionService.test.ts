@@ -173,6 +173,43 @@ describe('MissionService', () => {
     });
   });
 
+  describe('resolveExpiredMission', () => {
+    it('marks a not-completed expiry as failed with notes, no goal progress', async () => {
+      missionRepo.getById.mockResolvedValue(makeMission({ id: 'x', status: 'eta_expired' }));
+      missionRepo.updateStatus.mockResolvedValue(makeMission({ id: 'x', status: 'failed', notes: 'ran out' }));
+
+      const result = await service.resolveExpiredMission('x', false, 'ran out');
+
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith('x', 'failed', { notes: 'ran out' });
+      expect(missionRepo.setAwaitingNotes).toHaveBeenCalledWith('x', false);
+      expect(result.mission.status).toBe('failed');
+      expect(result.goalProgress).toBeNull();
+    });
+
+    it('marks a completed expiry with elapsed duration + notes and advances goals', async () => {
+      const started = new Date(Date.now() - 30 * 60000); // 30 min ago
+      missionRepo.getById.mockResolvedValue(
+        makeMission({ id: 'x', status: 'eta_expired', started_at: started, habit_category_id: 'cat-1' })
+      );
+      missionRepo.updateStatus.mockResolvedValue(
+        makeMission({ id: 'x', status: 'completed', habit_category_id: 'cat-1', actual_duration_minutes: 30 })
+      );
+      goalRepo.getActiveByCategory.mockResolvedValue(null);
+
+      const result = await service.resolveExpiredMission('x', true, 'wrapped up');
+
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith(
+        'x',
+        'completed',
+        expect.objectContaining({ notes: 'wrapped up' })
+      );
+      const call = missionRepo.updateStatus.mock.calls[0][2] as { actual_duration_minutes: number };
+      expect(call.actual_duration_minutes).toBeGreaterThanOrEqual(29);
+      expect(missionRepo.setAwaitingNotes).toHaveBeenCalledWith('x', false);
+      expect(result.mission.status).toBe('completed');
+    });
+  });
+
   describe('complete', () => {
     it('completes mission and returns no goal progress if no category', async () => {
       const activeMission = makeMission({ habit_category_id: null });

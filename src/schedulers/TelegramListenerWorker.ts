@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { getTelegramUpdates, sendTelegramMessage } from '../utils/telegram';
-import { parseIntent } from '../nlp/missionParser';
+import { parseIntent, parseExpiryStatusReply } from '../nlp/missionParser';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
@@ -14,6 +14,8 @@ import {
   replyNeedExtendDuration,
   replyStatus,
   replyNotesSaved,
+  replyExpiryNeedsBoth,
+  replyExpiryResolved,
   replyError,
 } from './telegramReplies';
 import { DEFAULT_USER_ID } from '../types';
@@ -44,6 +46,23 @@ async function handleText(text: string): Promise<void> {
   const awaiting = await missionService.getMissionAwaitingNotes(DEFAULT_USER_ID);
   if (awaiting) {
     if (!intent) {
+      // An expired mission must be resolved with a status (done / not done) AND notes.
+      if (awaiting.status === 'eta_expired') {
+        const { status, notes } = parseExpiryStatusReply(text);
+        if (!status || !notes) {
+          await sendTelegramMessage(replyExpiryNeedsBoth());
+          return; // keep awaiting until both are provided
+        }
+        const result = await missionService.resolveExpiredMission(
+          awaiting.id,
+          status === 'completed',
+          notes
+        );
+        await sendTelegramMessage(replyExpiryResolved(result));
+        console.log(`[Telegram Listener] Resolved expired "${result.mission.title}" as ${result.mission.status}`);
+        return;
+      }
+      // Otherwise (e.g. after a normal completion) any reply is the notes.
       const updated = await missionService.recordNotes(awaiting.id, text.trim());
       await sendTelegramMessage(replyNotesSaved(updated));
       console.log(`[Telegram Listener] Saved notes for "${updated.title}"`);

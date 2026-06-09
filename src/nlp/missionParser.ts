@@ -287,3 +287,86 @@ export function parseIntent(raw: string): ParsedIntent | null {
 
   return null;
 }
+
+// ── ETA-expiry resolution reply ─────────────────────────────────────────────
+// After a mission's ETA passes the user must reply with a status decision AND
+// notes, e.g. "✅ selesai, fixed the parser" or "❌ belum, kehabisan waktu".
+
+// Not-completed checked first so "belum selesai" wins over "selesai".
+const NOT_DONE_TOKENS = [
+  '❌',
+  'belum selesai',
+  'tidak selesai',
+  'belum',
+  'blm',
+  'tidak',
+  'gagal',
+  'enggak',
+  'nggak',
+  'engga',
+  'gak',
+  'not done',
+  'not completed',
+  'no',
+  'batal',
+];
+const DONE_TOKENS = [
+  '✅',
+  'sudah selesai',
+  'udah selesai',
+  'selesai',
+  'sudah',
+  'udah',
+  'beres',
+  'kelar',
+  'rampung',
+  'completed',
+  'complete',
+  'finished',
+  'done',
+  'komplit',
+  'yes',
+  'ya',
+  'oke',
+  'ok',
+];
+
+export interface ExpiryReply {
+  /** 'completed' / 'failed' (not completed) / null when no status given. */
+  status: 'completed' | 'failed' | null;
+  /** Remaining text after the status token — the notes (may be ''). */
+  notes: string;
+}
+
+/** Strip a leading status token; returns the remainder, or null if no match. */
+function stripStatusToken(text: string, token: string): string | null {
+  const lower = text.toLowerCase();
+  if (token === '✅' || token === '❌') {
+    return text.startsWith(token) ? text.slice(token.length) : null;
+  }
+  if (lower === token) return '';
+  if (lower.startsWith(token)) {
+    const rest = text.slice(token.length);
+    if (rest === '' || /^[\s,.:;\-–]/.test(rest)) return rest;
+  }
+  return null;
+}
+
+/**
+ * Parse the user's reply to an ETA-expiry prompt into a status decision + notes.
+ * Not-completed markers take precedence over completed ones.
+ */
+export function parseExpiryStatusReply(raw: string): ExpiryReply {
+  const text = (raw ?? '').trim();
+  const clean = (s: string) => s.replace(/^[\s,.:;\-–]+/, '').trim();
+
+  for (const t of NOT_DONE_TOKENS) {
+    const rest = stripStatusToken(text, t);
+    if (rest !== null) return { status: 'failed', notes: clean(rest) };
+  }
+  for (const t of DONE_TOKENS) {
+    const rest = stripStatusToken(text, t);
+    if (rest !== null) return { status: 'completed', notes: clean(rest) };
+  }
+  return { status: null, notes: text };
+}

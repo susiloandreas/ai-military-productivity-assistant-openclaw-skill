@@ -7,6 +7,8 @@ import {
   replyStatus,
   replyEtaExpiredAskNotes,
   replyNotesSaved,
+  replyExpiryNeedsBoth,
+  replyExpiryResolved,
   replyError,
 } from '../telegramReplies';
 import { Mission } from '../../types';
@@ -72,12 +74,33 @@ describe('telegramReplies', () => {
     expect(out).toContain('notes'); // asks what the user did
   });
 
-  it('asks for notes on ETA expiry and confirms when saved', () => {
+  it('asks for status + notes on ETA expiry and confirms when saved', () => {
     const expired = replyEtaExpiredAskNotes(mission({ title: 'Refactor', eta_minutes: 60 }), firstRng);
     expect(expired).toContain('ETA HABIS');
     expect(expired).toContain('Refactor');
-    expect(expired).toContain('notes');
+    expect(expired).toContain('✅'); // done option
+    expect(expired).toContain('❌'); // not-done option
     expect(replyNotesSaved(mission({ title: 'Refactor' }), firstRng)).toContain('Refactor');
+  });
+
+  it('re-prompts when the expiry reply lacks status or notes', () => {
+    expect(replyExpiryNeedsBoth()).toMatch(/status/i);
+  });
+
+  it('confirms an expired mission resolved as completed vs not completed', () => {
+    const done = replyExpiryResolved(
+      { mission: mission({ title: 'Refactor', status: 'completed', actual_duration_minutes: 30, notes: 'done it' }), goalProgress: null },
+      firstRng
+    );
+    expect(done).toContain('SELESAI');
+    expect(done).toContain('done it');
+
+    const notDone = replyExpiryResolved(
+      { mission: mission({ title: 'Refactor', status: 'failed', notes: 'ran out' }), goalProgress: null },
+      firstRng
+    );
+    expect(notDone).toContain('TIDAK SELESAI');
+    expect(notDone).toContain('ran out');
   });
 
   it('renders abort and extend replies', () => {

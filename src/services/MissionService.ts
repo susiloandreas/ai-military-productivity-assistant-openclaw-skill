@@ -224,6 +224,37 @@ export class MissionService {
     return this.missionRepo.appendNotes(missionId, notes);
   }
 
+  /**
+   * Resolve an ETA-expired mission from the user's reply: set the final status
+   * (completed or failed/not-completed) with notes, clear the notes flag, and —
+   * when completed — advance any linked goals using the elapsed duration.
+   */
+  async resolveExpiredMission(
+    missionId: string,
+    completed: boolean,
+    notes: string
+  ): Promise<MissionCompleteResult> {
+    const mission = await this.missionRepo.getById(missionId);
+    if (!mission) throw new Error('Mission not found.');
+
+    if (!completed) {
+      const failed = await this.missionRepo.updateStatus(missionId, 'failed', { notes });
+      await this.missionRepo.setAwaitingNotes(missionId, false);
+      return { mission: failed, goalProgress: null };
+    }
+
+    const startedAt = mission.started_at ? new Date(mission.started_at) : new Date();
+    const elapsed = Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 60000));
+    const updated = await this.missionRepo.updateStatus(missionId, 'completed', {
+      actual_duration_minutes: elapsed,
+      notes,
+    });
+    await this.missionRepo.setAwaitingNotes(missionId, false);
+
+    const { goalProgress } = await this.advanceGoals(updated, elapsed);
+    return { mission: updated, goalProgress };
+  }
+
   async getRecentCompleted(userId: string, days = 7): Promise<Mission[]> {
     return this.missionRepo.getRecentCompleted(userId, days);
   }

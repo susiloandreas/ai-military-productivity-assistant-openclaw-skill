@@ -1,4 +1,4 @@
-import { parseMissionMessage, parseIntent } from '../missionParser';
+import { parseMissionMessage, parseIntent, parseExpiryStatusReply } from '../missionParser';
 import { parseDurationToMinutes } from '../../utils/duration';
 
 describe('parseMissionMessage', () => {
@@ -170,5 +170,41 @@ describe('parseIntent', () => {
 
   it('returns null for unrelated chatter', () => {
     expect(parseIntent('how is the weather today')).toBeNull();
+  });
+});
+
+describe('parseExpiryStatusReply', () => {
+  it('parses completed status + notes (EN + ID + emoji)', () => {
+    expect(parseExpiryStatusReply('selesai, fixed the parser')).toEqual({
+      status: 'completed',
+      notes: 'fixed the parser',
+    });
+    expect(parseExpiryStatusReply('✅ shipped the PR')).toEqual({
+      status: 'completed',
+      notes: 'shipped the PR',
+    });
+    expect(parseExpiryStatusReply('done - wrote the tests')).toEqual({
+      status: 'completed',
+      notes: 'wrote the tests',
+    });
+  });
+
+  it('parses not-completed status, and prefers it over "selesai"', () => {
+    expect(parseExpiryStatusReply('belum selesai, kehabisan waktu')).toEqual({
+      status: 'failed',
+      notes: 'kehabisan waktu',
+    });
+    expect(parseExpiryStatusReply('❌ ketemu blocker')).toEqual({
+      status: 'failed',
+      notes: 'ketemu blocker',
+    });
+  });
+
+  it('reports missing status (null) or missing notes (empty)', () => {
+    expect(parseExpiryStatusReply('fixed the parser')).toEqual({
+      status: null,
+      notes: 'fixed the parser',
+    });
+    expect(parseExpiryStatusReply('selesai')).toEqual({ status: 'completed', notes: '' });
   });
 });

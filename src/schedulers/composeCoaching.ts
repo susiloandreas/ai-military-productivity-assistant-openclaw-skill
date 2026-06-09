@@ -1,6 +1,9 @@
 import { MissionRepository } from '../repositories/MissionRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
+import { StreakService } from '../services/StreakService';
 import { generateText } from '../utils/gemini';
+import { Tone, toneFor } from '../services/toneGate';
+import { StreakSnapshot } from '../types';
 import {
   CoachingSlot,
   buildCoachingContext,
@@ -26,7 +29,10 @@ export async function composeCoaching(
   habitRepo: HabitRepository,
   userId: string,
   slot: CoachingSlot,
-  now: Date
+  now: Date,
+  // Optional: when provided, the message tone is computed from live streak state
+  // and the user's streaks are surfaced in the brief; otherwise tone defaults by slot.
+  streakService?: StreakService
 ): Promise<string> {
   const [activeMission, held, recentCompleted, schedules, loggedTypeIds] = await Promise.all([
     missionRepo.getActive(userId),
@@ -35,6 +41,19 @@ export async function composeCoaching(
     habitRepo.getActiveSchedules(userId),
     missionRepo.getHabitTypeIdsLoggedSince(userId, startOfToday(now)),
   ]);
+
+  // Tone gate + streak surfacing from live state. Loss-aversion only at inflection
+  // points (a streak about to break today, ≥2 consecutive misses, nightly debrief).
+  let tone: Tone = toneFor({ isNightlyDebrief: slot === 'malam' });
+  let streaks: StreakSnapshot | undefined;
+  if (streakService) {
+    const [signals, snapshot] = await Promise.all([
+      streakService.toneSignals(userId, new Set(loggedTypeIds), now),
+      streakService.getSnapshot(userId, now),
+    ]);
+    tone = toneFor({ isNightlyDebrief: slot === 'malam', ...signals });
+    streaks = snapshot;
+  }
 
   // Morning slot reviews yesterday's habits (loss-aversion + what to improve).
   let yesterday = null;
@@ -55,6 +74,8 @@ export async function composeCoaching(
     loggedTypeIds: new Set(loggedTypeIds),
     now,
     yesterday,
+    tone,
+    streaks,
   });
 
   try {

@@ -109,7 +109,7 @@ describe('buildCoachingContext + summary', () => {
     expect(summary).toContain('Lari Pagi'); // missed habit surfaced
   });
 
-  it('builds a general prompt enforcing brevity, semangat and loss-aversion', () => {
+  it('builds a competence-toned general prompt by default (no inflection point)', () => {
     const ctx = buildCoachingContext({
       slot: 'siang',
       activeMission: null,
@@ -120,13 +120,28 @@ describe('buildCoachingContext + summary', () => {
       now: startOfToday,
     });
     const prompt = buildCoachingPrompt(ctx);
-    expect(prompt).toMatch(/SEMANGAT/i);
-    expect(prompt).toMatch(/TAKUT KEHILANGAN MIMPI/i);
+    expect(prompt).toMatch(/KOMPETENSI/i);
+    expect(prompt).not.toMatch(/TAKUT KEHILANGAN/i);
     expect(prompt).toMatch(/Bahasa Indonesia/i);
     expect(prompt).toContain('TIDAK ADA'); // no active mission reflected in data
   });
 
-  it('builds a morning prompt focused on loss-aversion review of yesterday', () => {
+  it('builds a loss-aversion general prompt when tone is escalated', () => {
+    const ctx = buildCoachingContext({
+      slot: 'siang',
+      activeMission: null,
+      held: [],
+      recentCompleted: [],
+      schedules: [],
+      loggedTypeIds: new Set<string>(),
+      now: startOfToday,
+      tone: 'loss_aversion',
+    });
+    const prompt = buildCoachingPrompt(ctx);
+    expect(prompt).toMatch(/TAKUT KEHILANGAN MIMPI/i);
+  });
+
+  it('defaults the morning prompt to competence (no inflection point)', () => {
     const ctx = buildCoachingContext({
       slot: 'pagi',
       activeMission: null,
@@ -136,10 +151,40 @@ describe('buildCoachingContext + summary', () => {
       loggedTypeIds: new Set<string>(),
       now: startOfToday,
     });
+    expect(ctx.tone).toBe('competence');
+    const prompt = buildCoachingPrompt(ctx);
+    expect(prompt).toMatch(/KOMPETENSI/i);
+    expect(prompt).not.toMatch(/TAKUT KEHILANGAN/i);
+    expect(prompt).toMatch(/Bahasa Indonesia/i);
+  });
+
+  it('builds a loss-aversion morning prompt when tone is escalated', () => {
+    const ctx = buildCoachingContext({
+      slot: 'pagi',
+      activeMission: null,
+      held: [],
+      recentCompleted: [],
+      schedules: [],
+      loggedTypeIds: new Set<string>(),
+      now: startOfToday,
+      tone: 'loss_aversion',
+    });
     const prompt = buildCoachingPrompt(ctx);
     expect(prompt).toMatch(/LOSS AVERSION/i);
     expect(prompt).toMatch(/KEMARIN/i);
-    expect(prompt).toMatch(/Bahasa Indonesia/i);
+  });
+
+  it('defaults the nightly (malam) slot to loss-aversion (debrief)', () => {
+    const ctx = buildCoachingContext({
+      slot: 'malam',
+      activeMission: null,
+      held: [],
+      recentCompleted: [],
+      schedules: [],
+      loggedTypeIds: new Set<string>(),
+      now: startOfToday,
+    });
+    expect(ctx.tone).toBe('loss_aversion');
   });
 });
 

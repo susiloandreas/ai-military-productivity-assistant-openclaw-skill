@@ -1,6 +1,7 @@
-import { Mission, HabitScheduleWithNames } from '../types';
+import { Mission, HabitScheduleWithNames, StreakSnapshot } from '../types';
 import { formatMinutes } from '../utils/duration';
 import { selectDueHabits } from './idleReminderMessages';
+import { Tone, toneFor } from '../services/toneGate';
 
 /**
  * Builds the Gemini coaching prompt and a static fallback from the user's
@@ -78,6 +79,10 @@ export interface CoachingContext {
   yesterday: YesterdayReview | null;
   /** 7-day adherence per scheduled habit (worst first) — populated for the morning slot. */
   habitMetrics: HabitAdherence[];
+  /** Message tone, decided by the shared tone gate (competence by default). */
+  tone: Tone;
+  /** Current streaks (overall + per-habit), when available — surfaced in the brief. */
+  streaks?: StreakSnapshot | null;
 }
 
 /** How well one scheduled habit was kept over the rolling window. */
@@ -160,6 +165,12 @@ export function buildCoachingContext(input: {
   loggedTypeIds: Set<string>;
   now: Date;
   yesterday?: YesterdayReview | null;
+  /** Explicit tone (from the shared gate). Defaults to: night = loss-aversion
+   *  (nightly debrief), otherwise competence. Callers with streak data should
+   *  pass the fully-computed tone. */
+  tone?: Tone;
+  /** Current streaks for surfacing in the brief. */
+  streaks?: StreakSnapshot | null;
 }): CoachingContext {
   const startOfToday = new Date(input.now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -179,6 +190,8 @@ export function buildCoachingContext(input: {
     // The 7-day metric block is a morning concern; skip the work for other slots.
     habitMetrics:
       input.slot === 'pagi' ? computeHabitAdherence(input.schedules, input.recentCompleted, input.now) : [],
+    tone: input.tone ?? toneFor({ isNightlyDebrief: input.slot === 'malam' }),
+    streaks: input.streaks ?? null,
   };
 }
 
@@ -233,6 +246,14 @@ export function contextSummary(ctx: CoachingContext): string {
     }
   }
 
+  if (ctx.streaks) {
+    const longestHabit = ctx.streaks.habits.reduce((m, h) => Math.max(m, h.current), 0);
+    lines.push(
+      `- STREAK: overall ${ctx.streaks.overall.current} hari beruntun ` +
+        `(terpanjang ${ctx.streaks.overall.longest}); streak kebiasaan aktif terpanjang: ${longestHabit} hari`
+    );
+  }
+
   return lines.join('\n');
 }
 
@@ -241,6 +262,26 @@ function adherenceFlag(h: HabitAdherence): string {
   if (h.logged === 0) return ' ⚠️ TERABAIKAN';
   if (h.logged / h.scheduled < 0.5) return ' ⚠️ sering terlewat';
   return '';
+}
+
+/** Morning (07:00), competence-first — the DEFAULT when no inflection point. */
+function buildMorningCompetencePrompt(ctx: CoachingContext): string {
+  return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
+Tulis SATU pesan coaching PAGI yang SINGKAT dalam Bahasa Indonesia.
+
+FOKUS UTAMA: PENGUATAN KOMPETENSI (mastery). Tinjau METRIK KEBIASAAN 7 HARI dan progres di bawah. Soroti KEMAJUAN nyata (streak yang terjaga, kebiasaan dengan kepatuhan terbaik, momentum minggu ini) untuk membangun rasa mampu, lalu beri SATU saran perbaikan konkret untuk hari ini. JANGAN memakai rasa takut/ancaman kehilangan.
+
+ATURAN WAJIB:
+- Maksimal 4 kalimat. Tegas, positif, padat, tanpa basa-basi.
+- Acu angka nyata (mis. "Olahraga 4/5", atau streak) agar pujian terasa konkret; jangan mengarang.
+- Beri TEPAT SATU hal yang bisa diperbaiki/ditingkatkan hari ini.
+- Boleh 1-2 emoji dan tag <b></b> (Telegram HTML). Tanpa markdown.
+- Akhiri dengan satu perintah aksi yang konkret.
+
+DATA SAAT INI:
+${contextSummary(ctx)}
+
+Tulis pesannya sekarang.`;
 }
 
 /** Morning (07:00) — loss-aversion review of yesterday's habits + what to improve. */
@@ -264,9 +305,26 @@ ${contextSummary(ctx)}
 Tulis pesannya sekarang.`;
 }
 
-/** The full prompt sent to Gemini. Morning uses the loss-aversion variant. */
+/** Tone-specific rule line shared by the siang/malam prompt. */
+function toneRule(tone: Tone): string {
+  return tone === 'loss_aversion'
+    ? '- Setiap pesan HARUS (1) membangkitkan SEMANGAT untuk mengejar mimpi, dan (2) menumbuhkan rasa TAKUT KEHILANGAN MIMPI itu jika disiplin diabaikan (loss aversion).\n' +
+        '- Jika ada kebiasaan yang TERLEWAT, SEBUTKAN namanya dan JELASKAN singkat bahwa itu terlewat (kapan dijadwalkan, sudah lewat berapa lama) sebagai kerugian nyata hari ini.'
+    : '- FOKUS pada PENGUATAN KOMPETENSI: akui kemajuan dan kemampuan (progres, streak, momentum) untuk membangun rasa mampu. JANGAN memakai rasa takut/ancaman kehilangan.\n' +
+        '- Jika ada kebiasaan yang sudah dijaga dengan baik, beri pengakuan; arahkan satu perbaikan kecil tanpa menghakimi.';
+}
+
+/**
+ * The full prompt sent to Gemini. Tone follows the shared gate on `ctx.tone`:
+ * competence by default, loss-aversion only at inflection points (and the
+ * nightly debrief). Morning has dedicated competence/loss-aversion variants.
+ */
 export function buildCoachingPrompt(ctx: CoachingContext): string {
-  if (ctx.slot === 'pagi') return buildMorningLossAversionPrompt(ctx);
+  if (ctx.slot === 'pagi') {
+    return ctx.tone === 'loss_aversion'
+      ? buildMorningLossAversionPrompt(ctx)
+      : buildMorningCompetencePrompt(ctx);
+  }
   return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
 Tugasmu: tulis SATU pesan coaching SINGKAT dalam Bahasa Indonesia.
 
@@ -274,8 +332,7 @@ ${SLOT_ANGLE[ctx.slot]}
 
 ATURAN WAJIB:
 - Maksimal 4 kalimat. Tegas, padat, tanpa basa-basi.
-- Setiap pesan HARUS (1) membangkitkan SEMANGAT untuk mengejar mimpi, dan (2) menumbuhkan rasa TAKUT KEHILANGAN MIMPI itu jika disiplin diabaikan (loss aversion).
-- Jika ada kebiasaan yang TERLEWAT, SEBUTKAN namanya dan JELASKAN singkat bahwa itu terlewat (kapan dijadwalkan, sudah lewat berapa lama) sebagai kerugian nyata hari ini.
+${toneRule(ctx.tone)}
 - Acu data nyata di bawah; jangan mengarang angka.
 - Boleh pakai 1-2 emoji dan tag <b></b> untuk penekanan (format Telegram HTML). Jangan pakai markdown.
 - Akhiri dengan satu perintah aksi yang konkret.
@@ -291,6 +348,14 @@ const FALLBACK_BY_SLOT: Record<CoachingSlot, string> = {
   siang: `☀️ <b>CHECK SIANG</b>\n\nSetengah hari sudah lewat. Setiap jam menganggur adalah mimpi yang kamu relakan pergi. Koreksi arah sebelum terlambat.\n\n<b>AKSI:</b> Mulai atau lanjutkan satu misi sekarang.`,
   malam: `🌙 <b>DEBRIEF MALAM</b>\n\nHari ini tidak bisa diulang. Kalau rantai disiplin putus malam ini, mimpimu ikut memudar. Tutup hari dengan benar.\n\n<b>AKSI:</b> Catat progres atau selesaikan kebiasaan terakhirmu.`,
 };
+
+/** A one-line streak summary for the morning brief, or '' when unavailable. */
+function streakLine(ctx: CoachingContext): string {
+  if (!ctx.streaks) return '';
+  const longestHabit = ctx.streaks.habits.reduce((m, h) => Math.max(m, h.current), 0);
+  const flame = ctx.streaks.overall.current >= 7 ? '🔥' : '✨';
+  return `${flame} <b>STREAK:</b> ${ctx.streaks.overall.current} hari beruntun (terpanjang ${ctx.streaks.overall.longest}) · kebiasaan terpanjang ${longestHabit} hari\n\n`;
+}
 
 /** Loss-aversion morning fallback grounded in the 7-day habit metrics. */
 function fallbackMorning(ctx: CoachingContext): string {
@@ -318,8 +383,30 @@ function fallbackMorning(ctx: CoachingContext): string {
   return `🌅 <b>BRIEFING PAGI — JANGAN KEHILANGAN MIMPIMU</b>\n\n${lostLine} Setiap hari yang bocor menjauhkan kamu dari mimpi.\n\n<b>PERBAIKI HARI INI:</b> ${improve}`;
 }
 
+/** Competence-first morning fallback grounded in the 7-day habit metrics. */
+function fallbackMorningCompetence(ctx: CoachingContext): string {
+  if (ctx.habitMetrics.length > 0) {
+    const block = ctx.habitMetrics
+      .map(h => `• <b>${h.habitTypeName}</b>: ${h.logged}/${h.scheduled}${adherenceFlag(h)}`)
+      .join('\n');
+    // Best adherence is at the end (sorted worst-first); worst is the area to lift.
+    const best = ctx.habitMetrics[ctx.habitMetrics.length - 1];
+    const worst = ctx.habitMetrics[0];
+    return (
+      `🌅 <b>BRIEFING PAGI — METRIK KEBIASAAN (7 HARI)</b>\n\n${block}\n\n` +
+      `Modal terkuatmu: <b>${best.habitTypeName}</b> (${best.logged}/${best.scheduled}) — itu bukti kamu bisa. ` +
+      `Pakai momentum yang sama untuk satu titik berikutnya.\n\n` +
+      `<b>TINGKATKAN HARI INI:</b> Naikkan <b>${worst.habitTypeName}</b> satu langkah, lebih awal.`
+    );
+  }
+  return `🌅 <b>BRIEFING PAGI — BANGUN MOMENTUM</b>\n\nSetiap hari adalah kesempatan menumpuk satu kemenangan kecil. Mulai dari yang kamu sudah kuasai, lalu tambah satu langkah.\n\n<b>TINGKATKAN HARI INI:</b> Mulai satu kebiasaan inti lebih awal dari kemarin.`;
+}
+
 /** Static motivational message used when Gemini is unavailable. */
 export function fallbackCoaching(ctx: CoachingContext): string {
-  if (ctx.slot === 'pagi') return fallbackMorning(ctx);
+  if (ctx.slot === 'pagi') {
+    const body = ctx.tone === 'loss_aversion' ? fallbackMorning(ctx) : fallbackMorningCompetence(ctx);
+    return `${streakLine(ctx)}${body}`;
+  }
   return FALLBACK_BY_SLOT[ctx.slot];
 }

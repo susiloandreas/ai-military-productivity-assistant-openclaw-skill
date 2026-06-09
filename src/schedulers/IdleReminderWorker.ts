@@ -11,6 +11,8 @@ import {
 import { isNearCoachingSlot } from './coachingContext';
 import { replyEtaExpiredAskNotes } from './telegramReplies';
 import { NotificationRepository } from '../repositories/NotificationRepository';
+import { StreakRepository } from '../repositories/StreakRepository';
+import { consecutiveMisses } from '../services/streakMath';
 import { DEFAULT_USER_ID, Mission } from '../types';
 
 const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
@@ -23,6 +25,7 @@ const ETA_FOLLOWUP_MIN = 5;
 const missionRepo = new MissionRepository();
 const habitRepo = new HabitRepository();
 const notificationRepo = new NotificationRepository();
+const streakRepo = new StreakRepository();
 
 function startOfToday(now: Date): Date {
   const d = new Date(now);
@@ -91,7 +94,19 @@ async function check(): Promise<void> {
     await missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now))
   );
 
-  const lossAversion = buildHabitLossAversionMessage(schedules, loggedTypeIds, now);
+  // Consecutive missed scheduled days per habit-type → drives gentle-vs-escalate
+  // recovery framing ("never miss twice").
+  const streakRows = await streakRepo.getAll(DEFAULT_USER_ID);
+  const rowByType = new Map(streakRows.filter(r => r.habit_type_id).map(r => [r.habit_type_id!, r]));
+  const missCountByType = new Map<string, number>();
+  for (const s of schedules) {
+    missCountByType.set(
+      s.habit_type_id,
+      consecutiveMisses(rowByType.get(s.habit_type_id) ?? null, s, now)
+    );
+  }
+
+  const lossAversion = buildHabitLossAversionMessage(schedules, loggedTypeIds, now, Math.random, missCountByType);
   const message = lossAversion ?? buildGenericIdleMessage(findSeharusnyaHabit(schedules, loggedTypeIds, now));
 
   console.log(

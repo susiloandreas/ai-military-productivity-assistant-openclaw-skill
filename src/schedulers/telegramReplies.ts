@@ -74,12 +74,17 @@ const ASK_NOTES = [
   '📝 Ceritakan singkat hasilnya. Balas, dan aku simpan ke notes misi ini.',
 ];
 
-export function replyCompleted(result: MissionCompleteResult, rng: Rng = Math.random): string {
+export function replyCompleted(
+  result: MissionCompleteResult,
+  rng: Rng = Math.random,
+  streakCount = 0
+): string {
   const { mission, goalProgress } = result;
   const lines = [`📌 <b>${mission.title}</b>`];
   if (mission.actual_duration_minutes != null) {
     lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
   }
+  if (streakCount > 0) lines.push(`🔥 Streak: <b>${streakCount} hari beruntun</b>`);
   if (goalProgress) {
     if (goalProgress.goalCompleted) {
       lines.push(`🏆 GOAL TUNTAS: <b>${goalProgress.goal.title}</b>`);
@@ -120,7 +125,11 @@ export function replyExpiryNeedsBoth(): string {
 }
 
 /** Confirmation after an expired mission is resolved as completed / not completed. */
-export function replyExpiryResolved(result: MissionCompleteResult, rng: Rng = Math.random): string {
+export function replyExpiryResolved(
+  result: MissionCompleteResult,
+  rng: Rng = Math.random,
+  streakCount = 0
+): string {
   const { mission, goalProgress } = result;
   const done = mission.status === 'completed';
   const header = done
@@ -130,6 +139,7 @@ export function replyExpiryResolved(result: MissionCompleteResult, rng: Rng = Ma
   if (done && mission.actual_duration_minutes != null) {
     lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
   }
+  if (done && streakCount > 0) lines.push(`🔥 Streak: <b>${streakCount} hari beruntun</b>`);
   if (mission.notes) lines.push(`📝 ${mission.notes}`);
   if (done && goalProgress) {
     if (goalProgress.goalCompleted) lines.push(`🏆 GOAL TUNTAS: <b>${goalProgress.goal.title}</b>`);

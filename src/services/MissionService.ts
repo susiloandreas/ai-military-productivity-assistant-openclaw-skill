@@ -2,6 +2,7 @@ import { MissionRepository } from '../repositories/MissionRepository';
 import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { GoalService, ProgressResult } from './GoalService';
+import { StreakService } from './StreakService';
 import { Mission } from '../types';
 import { parseDurationToMinutes } from '../utils/duration';
 import { Queue } from 'bullmq';
@@ -48,9 +49,22 @@ export class MissionService {
     private missionRepo: MissionRepository,
     private goalRepo: GoalRepository,
     private habitRepo: HabitRepository,
-    private goalService: GoalService
+    private goalService: GoalService,
+    // Optional so existing callers/tests keep working; when present, completions
+    // advance the user's habit + overall streaks.
+    private streakService?: StreakService
   ) {
     this.etaQueue = new Queue('eta-expiry', { connection: redisConnection });
+  }
+
+  /** Advance streaks on a completion, swallowing errors so it never blocks the reply. */
+  private async advanceStreaks(userId: string, habitTypeId: string | null): Promise<void> {
+    if (!this.streakService) return;
+    try {
+      await this.streakService.recordCompletion(userId, habitTypeId);
+    } catch (err) {
+      console.warn(`[Streak] failed to record completion: ${(err as Error).message}`);
+    }
   }
 
   async start(
@@ -115,6 +129,7 @@ export class MissionService {
     });
 
     const { goalProgress } = await this.advanceGoals(mission, actualDuration);
+    await this.advanceStreaks(userId, completed.habit_type_id);
     return { mission: completed, goalProgress };
   }
 
@@ -144,6 +159,7 @@ export class MissionService {
     );
 
     const { habitGoalProgress, goalProgress } = await this.advanceGoals(mission, durationMinutes);
+    await this.advanceStreaks(userId, mission.habit_type_id);
     return { mission, habitGoalProgress, goalProgress };
   }
 
@@ -294,6 +310,7 @@ export class MissionService {
     await this.missionRepo.setAwaitingNotes(missionId, false);
 
     const { goalProgress } = await this.advanceGoals(updated, elapsed);
+    await this.advanceStreaks(mission.user_id, updated.habit_type_id);
     return { mission: updated, goalProgress };
   }
 

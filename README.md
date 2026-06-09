@@ -119,14 +119,36 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 
 Returns `{ "status": "ok", "service": "ironclaw-ai", "timestamp": "..." }`
 
+## Habit formation mechanics
+
+Beyond cueing and tracking, IronClaw is tuned for the mechanics that actually make
+habits stick:
+
+- **Streaks ("the chain")** — every completion advances a per-habit streak and an
+  overall streak (current + longest), persisted in `habit_streaks`. A streak breaks
+  when a *scheduled* day passes unlogged (per-habit) or a full calendar day passes
+  with no completion (overall). Streaks are surfaced in the completion reply, the
+  morning brief, and reminders. See `StreakService` + `src/services/streakMath.ts`.
+- **Miss recovery (never miss twice)** — a single missed scheduled habit is framed
+  as *recoverable*, not a failure, and offered a **2-minute minimum-viable** version
+  to keep the chain alive; only a **second consecutive** miss escalates. Logging the
+  habit (including the minimum version) resets the escalation. See
+  `src/services/missRecovery.ts`.
+- **Competence-first tone** — coaching and reminders lead with progress/mastery by
+  default; loss-aversion is gated to genuine inflection points (a streak about to
+  break today, ≥2 consecutive misses, or the nightly debrief) by a single shared
+  predicate in `src/services/toneGate.ts`.
+- **Escalating reward** — the AI completion cheer (`composeCompletionCheer`) scales
+  its celebration with the streak's reward tier (1 / 3 / 7 / 14 / 30+ days).
+
 ## Coaching (Gemini)
 
 The `coaching` worker sends a **brief** Indonesian military-style coaching message
 three times a day — **07:00 (pagi), 13:00 (siang), 23:00 (malam)** in `TZ` — generated
 by **Google Gemini** and grounded in your live state: active/held missions, what you've
-completed today, 7-day momentum, and any scheduled habits due or already missed. Every
-message is prompted to **membangkitkan semangat** (fire up motivation) and **menumbuhkan
-rasa takut kehilangan mimpi** (loss aversion — fear of losing the dream).
+completed today, 7-day momentum, your current streaks, and any scheduled habits due or
+already missed. Tone follows the shared gate (above): **competence/mastery by default**,
+with loss-aversion reserved for inflection points and the nightly debrief.
 
 Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-flash`). If the
 key is missing or the API fails, it falls back to a static slot-specific message, so a

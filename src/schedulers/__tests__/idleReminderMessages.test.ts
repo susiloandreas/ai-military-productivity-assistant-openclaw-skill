@@ -84,12 +84,19 @@ describe('buildHabitLossAversionMessage', () => {
     expect(buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(5), FIRST)).toBeNull();
   });
 
-  it('uses a failure header and names the missed habit', () => {
+  it('frames a FIRST miss gently with a 2-minute minimum-viable offer (no shame)', () => {
     const msg = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), FIRST)!;
-    expect(msg).toContain('GAGAL MENEPATI');
+    expect(msg).not.toContain('GAGAL MENEPATI'); // not shaming on a first miss
+    expect(msg).toContain('MINIMAL 2 MENIT');
     expect(msg).toContain('running');
-    expect(msg).toContain('06:00');
     expect(msg).toContain('LEWAT');
+  });
+
+  it('escalates to a failure header on a SECOND consecutive miss', () => {
+    const misses = new Map([['t1', 2]]);
+    const msg = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), FIRST, misses)!;
+    expect(msg).toContain('GAGAL MENEPATI');
+    expect(msg).not.toContain('MINIMAL 2 MENIT'); // escalation drops the gentle offer
   });
 
   it('uses an urgency header when only due (not yet missed)', () => {
@@ -99,9 +106,10 @@ describe('buildHabitLossAversionMessage', () => {
   });
 
   it('varies the wording with different RNG but always names the habit', () => {
-    const first = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), () => 0)!;
-    const last = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), () => 0.99)!;
-    expect(first).not.toBe(last); // different header/intro/closer/cta
+    const misses = new Map([['t1', 2]]); // escalation path so 'LEWAT' header copy applies
+    const first = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), () => 0, misses)!;
+    const last = buildHabitLossAversionMessage([schedule({})], NONE, MONDAY(8), () => 0.99, misses)!;
+    expect(first).not.toBe(last); // different header/cta
     expect(first).toContain('running');
     expect(last).toContain('running');
     expect(last).toContain('LEWAT');

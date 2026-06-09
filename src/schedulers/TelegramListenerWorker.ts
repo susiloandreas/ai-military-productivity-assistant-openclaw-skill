@@ -6,6 +6,8 @@ import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { GoalService } from '../services/GoalService';
 import { MissionService } from '../services/MissionService';
+import { StreakService } from '../services/StreakService';
+import { StreakRepository } from '../repositories/StreakRepository';
 import {
   replyStarted,
   replyCompleted,
@@ -23,6 +25,8 @@ import {
 } from './telegramReplies';
 import { AbortNeedsTargetError } from '../services/MissionService';
 import { composeCoaching } from './composeCoaching';
+import { composeNextStepNudge } from './composeNextStep';
+import { composeCompletionCheer } from './composeCompletionCheer';
 import { slotForHour } from './coachingContext';
 import { DEFAULT_USER_ID } from '../types';
 
@@ -33,12 +37,29 @@ function startOfToday(now: Date): Date {
   return d;
 }
 
+/**
+ * Current streak for a just-completed mission — its habit-type streak when the
+ * mission is habit-linked, else the overall streak. Drives the escalating cheer.
+ */
+async function streakCountFor(mission: { habit_type_id: string | null }): Promise<number> {
+  try {
+    if (mission.habit_type_id) {
+      return await streakService.getHabitCurrent(DEFAULT_USER_ID, mission.habit_type_id);
+    }
+    return (await streakService.getSnapshot(DEFAULT_USER_ID)).overall.current;
+  } catch {
+    return 0;
+  }
+}
+
 // ── Dependency wiring (mirrors server.ts) ────────────────────────────────────
 const missionRepo = new MissionRepository();
 const goalRepo = new GoalRepository();
 const habitRepo = new HabitRepository();
+const streakRepo = new StreakRepository();
 const goalService = new GoalService(goalRepo, habitRepo);
-const missionService = new MissionService(missionRepo, goalRepo, habitRepo, goalService);
+const streakService = new StreakService(streakRepo, habitRepo);
+const missionService = new MissionService(missionRepo, goalRepo, habitRepo, goalService, streakService);
 
 const POLL_TIMEOUT_SEC = 30;
 const ERROR_BACKOFF_MS = 5000;
@@ -71,7 +92,16 @@ async function handleText(text: string): Promise<void> {
           status === 'completed',
           notes
         );
-        await sendTelegramMessage(replyExpiryResolved(result));
+        // Follow up with an AI message tuned to the outcome: a motivational cheer
+        // on success, or a recovery nudge to start the next step on failure.
+        if (result.mission.status === 'completed') {
+          const streak = await streakCountFor(result.mission);
+          await sendTelegramMessage(replyExpiryResolved(result, Math.random, streak));
+          await sendTelegramMessage(await composeCompletionCheer(result, streak)).catch(() => null);
+        } else {
+          await sendTelegramMessage(replyExpiryResolved(result));
+          await sendTelegramMessage(await composeNextStepNudge(result.mission)).catch(() => null);
+        }
         console.log(`[Telegram Listener] Resolved expired "${result.mission.title}" as ${result.mission.status}`);
         return;
       }
@@ -106,7 +136,10 @@ async function handleText(text: string): Promise<void> {
         const result = await missionService.complete(DEFAULT_USER_ID, intent.actualStr, null);
         // Ask what was done; the next free-text reply is captured into notes.
         await missionService.requestNotes(result.mission.id);
-        await sendTelegramMessage(replyCompleted(result));
+        const streak = await streakCountFor(result.mission);
+        await sendTelegramMessage(replyCompleted(result, Math.random, streak));
+        // Follow with an AI-generated motivational cheer that escalates with the streak.
+        await sendTelegramMessage(await composeCompletionCheer(result, streak)).catch(() => null);
         console.log(`[Telegram Listener] Completed mission "${result.mission.title}"`);
         break;
       }
@@ -154,7 +187,7 @@ async function handleText(text: string): Promise<void> {
         // Same coaching engine as the scheduled briefs; slot follows the hour,
         // so a morning brief includes the yesterday review + 7-day habit metrics.
         const now = new Date();
-        const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now);
+        const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now, streakService);
         await sendTelegramMessage(message);
         console.log('[Telegram Listener] Sent on-demand brief');
         break;

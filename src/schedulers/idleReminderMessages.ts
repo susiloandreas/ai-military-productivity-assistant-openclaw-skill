@@ -1,5 +1,6 @@
 import { HabitScheduleWithNames } from '../types';
 import { formatMinutes } from '../utils/duration';
+import { MINIMUM_VIABLE_MINUTES, recoveryState } from '../services/missRecovery';
 
 /** Source of randomness — injectable so tests can be deterministic. */
 export type Rng = () => number;
@@ -64,11 +65,28 @@ export function buildHeldMissionReminder(
   return `${pick(HELD_HEADERS, rng)}\n${list}\n\n<b>AKSI:</b> Lanjutkan atau batalkan.`;
 }
 
+// Escalation headers — used only on a SECOND consecutive miss ("never miss twice").
 const MISSED_HEADERS = [
   '☠️ <b>KAMU GAGAL MENEPATI JADWAL</b>',
   '💀 <b>KOMITMEN KAMU SEKARAT</b>',
   '⚠️ <b>KAMU INGKAR JANJI SENDIRI</b>',
   '🚨 <b>JADWAL TERBENGKALAI</b>',
+];
+
+// Gentle, recoverable headers — used on a FIRST miss; no shame, the chain is
+// still saveable today.
+const RECOVERABLE_HEADERS = [
+  '🔁 <b>BELUM TERLAMBAT — SELAMATKAN HARI INI</b>',
+  '🌱 <b>SATU KALI LEWAT, RANTAI MASIH HIDUP</b>',
+  '💪 <b>MASIH BISA DISELAMATKAN</b>',
+  '🎯 <b>TUTUP CELAH INI SEBELUM JADI POLA</b>',
+];
+
+// Encouraging CTAs for the recoverable path (paired with the minimum-viable offer).
+const RECOVERABLE_CTAS = [
+  '<b>SELAMATKAN:</b> Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>AMANKAN HARI INI:</b> Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>JAGA RANTAI:</b> Ketik <i>"mulai [aktivitas]"</i>',
 ];
 
 const DUE_HEADERS = [
@@ -159,20 +177,31 @@ function habitLine(item: DueHabit): string {
   return `⏳ ${name} — ${at}, tersisa ${formatMinutes(minutesLeft)}`;
 }
 
+/** The 2-minute minimum-viable offer line for a recoverable miss. */
+function minimumViableLine(name: string): string {
+  return (
+    `🟢 <b>MINIMAL ${MINIMUM_VIABLE_MINUTES} MENIT:</b> versi terkecil pun menjaga rantai — ` +
+    `<i>"mulai ${name} ${MINIMUM_VIABLE_MINUTES} menit"</i>.`
+  );
+}
+
 /**
- * Loss-aversion reminder: confronts the user with the scheduled habit(s) they
- * are about to lose (or have already lost) today. Returns null when nothing is
- * due or missed — caller should fall back to the generic idle prompt.
+ * Habit reminder that confronts the user with the scheduled habit(s) due or
+ * missed today. Returns null when nothing is due or missed — caller should fall
+ * back to the generic idle prompt.
  *
- * The header and call-to-action are picked at random from the copy pools above
- * so the message reads differently each time. Pass a fixed `rng` for
- * deterministic output.
+ * Tone follows miss-recovery: a FIRST miss is framed gently (recoverable) with a
+ * 2-minute minimum-viable offer; only a SECOND consecutive miss escalates to the
+ * loss-aversion headers. `missCountByType` maps a habit_type_id to its number of
+ * consecutive missed scheduled days; when absent, a miss is treated as a first
+ * (recoverable) miss. Header/CTA are randomized via `rng` for varied phrasing.
  */
 export function buildHabitLossAversionMessage(
   schedules: HabitScheduleWithNames[],
   loggedTypeIds: Set<string>,
   now: Date = new Date(),
-  rng: Rng = Math.random
+  rng: Rng = Math.random,
+  missCountByType?: Map<string, number>
 ): string | null {
   const due = selectDueHabits(schedules, loggedTypeIds, now);
   if (due.length === 0) return null;
@@ -184,12 +213,23 @@ export function buildHabitLossAversionMessage(
   const shown = [...missed, ...dueNow];
 
   const lines = shown.map(habitLine).join('\n');
-  const hasMissed = missed.length > 0;
 
-  const header = pick(hasMissed ? MISSED_HEADERS : DUE_HEADERS, rng);
-  const cta = pick(CTAS, rng);
+  // Only due (nothing missed): keep the existing urgency framing.
+  if (missed.length === 0) {
+    return `${pick(DUE_HEADERS, rng)}\n${lines}\n\n${pick(CTAS, rng)}`;
+  }
 
-  return `${header}\n${lines}\n\n${cta}`;
+  // A miss exists — decide gentle vs escalate from its consecutive-miss count.
+  const missedHabit = missed[0].schedule;
+  const misses = missCountByType?.get(missedHabit.habit_type_id) ?? 1;
+  const { decision, offerMinimumViable } = recoveryState(misses);
+
+  if (decision === 'escalate') {
+    return `${pick(MISSED_HEADERS, rng)}\n${lines}\n\n${pick(CTAS, rng)}`;
+  }
+
+  const offer = offerMinimumViable ? `\n${minimumViableLine(missedHabit.habit_type_name)}` : '';
+  return `${pick(RECOVERABLE_HEADERS, rng)}\n${lines}${offer}\n\n${pick(RECOVERABLE_CTAS, rng)}`;
 }
 
 /**

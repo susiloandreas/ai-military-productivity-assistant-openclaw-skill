@@ -9,10 +9,12 @@ import { TennisRepository } from './repositories/TennisRepository';
 import { SleepRepository } from './repositories/SleepRepository';
 import { DisciplineRepository } from './repositories/DisciplineRepository';
 import { CoachingRepository } from './repositories/CoachingRepository';
+import { StreakRepository } from './repositories/StreakRepository';
 
 // Services
 import { GoalService } from './services/GoalService';
 import { MissionService } from './services/MissionService';
+import { StreakService } from './services/StreakService';
 import { HabitService } from './services/HabitService';
 import { TennisService } from './services/TennisService';
 import { SleepService } from './services/SleepService';
@@ -42,9 +44,11 @@ const tennisRepo       = new TennisRepository();
 const sleepRepo        = new SleepRepository();
 const disciplineRepo   = new DisciplineRepository();
 const coachingRepo     = new CoachingRepository();
+const streakRepo       = new StreakRepository();
 
 const goalService      = new GoalService(goalRepo, habitRepo);
-const missionService   = new MissionService(missionRepo, goalRepo, habitRepo, goalService);
+const streakService    = new StreakService(streakRepo, habitRepo);
+const missionService   = new MissionService(missionRepo, goalRepo, habitRepo, goalService, streakService);
 const habitService     = new HabitService(habitRepo, missionRepo, goalService);
 const tennisService    = new TennisService(tennisRepo, missionService);
 const sleepService     = new SleepService(sleepRepo);

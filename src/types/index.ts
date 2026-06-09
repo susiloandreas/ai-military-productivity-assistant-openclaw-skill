@@ -167,6 +167,34 @@ export interface CoachingFeedback {
   created_at: Date;
 }
 
+// ── Streaks ──────────────────────────────────────────────────────────────────
+/**
+ * One streak row. `habit_type_id === null` is the user's OVERALL streak
+ * (consecutive days with ≥1 completed mission); otherwise it is the per-habit
+ * streak. `last_logged_day` is the local calendar day (YYYY-MM-DD) the streak
+ * was last advanced — used to enforce once-per-day and to detect gaps on read.
+ */
+export interface Streak {
+  user_id: string;
+  habit_type_id: string | null;
+  current_count: number;
+  longest_count: number;
+  last_logged_day: string | null;
+}
+
+/** One habit-type's streak as surfaced to the user. */
+export interface HabitStreak {
+  habit_type_id: string;
+  current: number;
+  longest: number;
+}
+
+/** Per-habit + overall streaks for a user at a point in time (breaks applied). */
+export interface StreakSnapshot {
+  overall: { current: number; longest: number };
+  habits: HabitStreak[];
+}
+
 // ── Analytics ─────────────────────────────────────────────────────────────
 export interface EstimationAnalysis {
   sampleCount: number;

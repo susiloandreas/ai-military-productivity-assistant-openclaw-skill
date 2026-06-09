@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { NotificationRepository } from '../repositories/NotificationRepository';
+import { StreakRepository } from '../repositories/StreakRepository';
+import { StreakService } from '../services/StreakService';
 import { sendTelegramMessage } from '../utils/telegram';
 import { COACHING_HOURS, slotForHour, nextRunDelayMs, coachingDedupKey } from './coachingContext';
 import { composeCoaching } from './composeCoaching';
@@ -10,6 +12,7 @@ import { DEFAULT_USER_ID } from '../types';
 const missionRepo = new MissionRepository();
 const habitRepo = new HabitRepository();
 const notificationRepo = new NotificationRepository();
+const streakService = new StreakService(new StreakRepository(), habitRepo);
 
 /** Build context, ask Gemini for a brief coaching message, deliver via Telegram. */
 async function runCoaching(hour: number): Promise<void> {
@@ -23,7 +26,7 @@ async function runCoaching(hour: number): Promise<void> {
     return;
   }
 
-  const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slot, now);
+  const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slot, now, streakService);
   console.log(`[Coaching] ${now.toISOString()} — sent ${slot} coaching`);
 
   await sendTelegramMessage(message).catch(err =>

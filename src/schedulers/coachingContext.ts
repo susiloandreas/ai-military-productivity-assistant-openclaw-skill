@@ -76,6 +76,59 @@ export interface CoachingContext {
   due: ReturnType<typeof selectDueHabits>;
   /** Yesterday's scheduled-habit outcome — populated for the morning slot. */
   yesterday: YesterdayReview | null;
+  /** 7-day adherence per scheduled habit (worst first) — populated for the morning slot. */
+  habitMetrics: HabitAdherence[];
+}
+
+/** How well one scheduled habit was kept over the rolling window. */
+export interface HabitAdherence {
+  habitTypeName: string;
+  categoryName: string;
+  /** Scheduled occurrences in the window (days the habit was due). */
+  scheduled: number;
+  /** Of those, how many days the habit was actually logged. */
+  logged: number;
+}
+
+/**
+ * Per-scheduled-habit adherence over the `days` completed days ending yesterday
+ * (today excluded — it isn't over yet). For each habit, counts how many of its
+ * scheduled days in the window were actually logged. Pure — the caller supplies
+ * completed missions. Sorted worst-adherence first so the coach confronts the
+ * most-neglected habit (e.g. skipped exercise) before anything else.
+ */
+export function computeHabitAdherence(
+  schedules: HabitScheduleWithNames[],
+  completed: Mission[],
+  now: Date,
+  days = 7
+): HabitAdherence[] {
+  // habit_type_id → set of local day strings it was logged on.
+  const loggedDays = new Map<string, Set<string>>();
+  for (const m of completed) {
+    if (!m.habit_type_id) continue;
+    const day = new Date(m.completed_at ?? m.started_at).toDateString();
+    (loggedDays.get(m.habit_type_id) ?? loggedDays.set(m.habit_type_id, new Set()).get(m.habit_type_id)!).add(day);
+  }
+
+  const result: HabitAdherence[] = [];
+  for (const s of schedules) {
+    let scheduled = 0;
+    let logged = 0;
+    for (let i = 1; i <= days; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      if (!s.days_of_week.includes(d.getDay())) continue;
+      scheduled++;
+      if (loggedDays.get(s.habit_type_id)?.has(d.toDateString())) logged++;
+    }
+    if (scheduled > 0) {
+      result.push({ habitTypeName: s.habit_type_name, categoryName: s.category_name, scheduled, logged });
+    }
+  }
+  result.sort((a, b) => a.logged / a.scheduled - b.logged / b.scheduled);
+  return result;
 }
 
 /**
@@ -123,6 +176,9 @@ export function buildCoachingContext(input: {
     weekCompletedCount: input.recentCompleted.length,
     due: selectDueHabits(input.schedules, input.loggedTypeIds, input.now),
     yesterday: input.yesterday ?? null,
+    // The 7-day metric block is a morning concern; skip the work for other slots.
+    habitMetrics:
+      input.slot === 'pagi' ? computeHabitAdherence(input.schedules, input.recentCompleted, input.now) : [],
   };
 }
 
@@ -170,7 +226,21 @@ export function contextSummary(ctx: CoachingContext): string {
     );
   }
 
+  if (ctx.habitMetrics.length > 0) {
+    lines.push('- METRIK KEBIASAAN (7 hari terakhir, dipenuhi/terjadwal):');
+    for (const h of ctx.habitMetrics) {
+      lines.push(`  • ${h.habitTypeName}: ${h.logged}/${h.scheduled}${adherenceFlag(h)}`);
+    }
+  }
+
   return lines.join('\n');
+}
+
+/** A short tag marking a neglected habit, shared by the prompt summary and fallback. */
+function adherenceFlag(h: HabitAdherence): string {
+  if (h.logged === 0) return ' ⚠️ TERABAIKAN';
+  if (h.logged / h.scheduled < 0.5) return ' ⚠️ sering terlewat';
+  return '';
 }
 
 /** Morning (07:00) — loss-aversion review of yesterday's habits + what to improve. */
@@ -178,12 +248,12 @@ function buildMorningLossAversionPrompt(ctx: CoachingContext): string {
   return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
 Tulis SATU pesan coaching PAGI yang SINGKAT dalam Bahasa Indonesia.
 
-FOKUS UTAMA: LOSS AVERSION. Tinjau KEBIASAAN KEMARIN. Soroti yang TERLEWAT sebagai kerugian nyata yang menggerus mimpinya, lalu beri SATU saran perbaikan konkret untuk hari ini.
+FOKUS UTAMA: LOSS AVERSION. Tinjau METRIK KEBIASAAN 7 HARI di bawah, bukan hanya kemarin. Soroti habit dengan kepatuhan TERBURUK (mis. olahraga yang sering dilewatkan, kerja yang tidak fokus) sebagai kerugian nyata yang menggerus mimpinya, lalu beri SATU saran perbaikan konkret untuk hari ini.
 
 ATURAN WAJIB:
 - Maksimal 4 kalimat. Tegas, padat, tanpa basa-basi.
-- Tonjolkan apa yang HILANG kemarin dan harga yang dibayar jika pola ini berlanjut — bangkitkan rasa TAKUT KEHILANGAN MIMPI.
-- Beri TEPAT SATU hal yang bisa diperbaiki hari ini (what could be improved), berdasarkan kebiasaan yang terlewat kemarin.
+- WAJIB sebut angka metrik habit terburuk (mis. "Olahraga 2/5") agar konfrontasinya nyata, lalu tonjolkan harga yang dibayar jika pola ini berlanjut — bangkitkan rasa TAKUT KEHILANGAN MIMPI.
+- Beri TEPAT SATU hal yang bisa diperbaiki hari ini (what could be improved), berdasarkan habit dengan kepatuhan terburuk minggu ini.
 - Acu data nyata di bawah; jangan mengarang.
 - Boleh 1-2 emoji dan tag <b></b> (Telegram HTML). Tanpa markdown.
 - Akhiri dengan satu perintah aksi yang konkret.
@@ -222,8 +292,22 @@ const FALLBACK_BY_SLOT: Record<CoachingSlot, string> = {
   malam: `🌙 <b>DEBRIEF MALAM</b>\n\nHari ini tidak bisa diulang. Kalau rantai disiplin putus malam ini, mimpimu ikut memudar. Tutup hari dengan benar.\n\n<b>AKSI:</b> Catat progres atau selesaikan kebiasaan terakhirmu.`,
 };
 
-/** Loss-aversion morning fallback grounded in yesterday's missed habits. */
+/** Loss-aversion morning fallback grounded in the 7-day habit metrics. */
 function fallbackMorning(ctx: CoachingContext): string {
+  // Preferred: confront the worst weekly adherence with real numbers.
+  if (ctx.habitMetrics.length > 0) {
+    const block = ctx.habitMetrics
+      .map(h => `• <b>${h.habitTypeName}</b>: ${h.logged}/${h.scheduled}${adherenceFlag(h)}`)
+      .join('\n');
+    const worst = ctx.habitMetrics[0];
+    return (
+      `🌅 <b>BRIEFING PAGI — METRIK KEBIASAAN (7 HARI)</b>\n\n${block}\n\n` +
+      `Yang paling tergerus: <b>${worst.habitTypeName}</b> (${worst.logged}/${worst.scheduled}). ` +
+      `Setiap kali terlewat, mimpimu menjauh selangkah.\n\n` +
+      `<b>PERBAIKI HARI INI:</b> Tuntaskan <b>${worst.habitTypeName}</b> lebih awal, sebelum alasan datang.`
+    );
+  }
+  // Fallback to yesterday's outcome when there are no scheduled-habit metrics yet.
   const missed = ctx.yesterday?.missed ?? [];
   const lostLine = missed.length
     ? `Kemarin kamu melewatkan: <b>${missed.join(', ')}</b>. Itu progres yang hilang dan tidak akan kembali.`

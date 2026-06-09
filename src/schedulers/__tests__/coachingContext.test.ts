@@ -4,6 +4,7 @@ import {
   buildCoachingContext,
   buildCoachingPrompt,
   contextSummary,
+  computeHabitAdherence,
   fallbackCoaching,
   isNearCoachingSlot,
   coachingDedupKey,
@@ -139,6 +140,78 @@ describe('buildCoachingContext + summary', () => {
     expect(prompt).toMatch(/LOSS AVERSION/i);
     expect(prompt).toMatch(/KEMARIN/i);
     expect(prompt).toMatch(/Bahasa Indonesia/i);
+  });
+});
+
+describe('computeHabitAdherence', () => {
+  // 2026-06-08 is a Monday; the window is the 7 days ending Sun 2026-06-07.
+  const now = new Date('2026-06-08T07:00:00');
+  const daily = [0, 1, 2, 3, 4, 5, 6];
+
+  const schedule = (id: string, name: string): HabitScheduleWithNames =>
+    ({
+      id,
+      user_id: 'u1',
+      habit_type_id: id,
+      expected_at: '06:00:00',
+      grace_minutes: 60,
+      days_of_week: daily,
+      active: true,
+      created_at: now,
+      habit_type_name: name,
+      category_name: 'Fisik',
+    } as HabitScheduleWithNames);
+
+  it('counts scheduled vs logged days over the window, today excluded', () => {
+    const completed = [
+      mission({ habit_type_id: 'ht-run', completed_at: new Date('2026-06-07T06:30:00') }),
+      mission({ habit_type_id: 'ht-run', completed_at: new Date('2026-06-05T06:30:00') }),
+      // Today's log must NOT count — the day isn't over.
+      mission({ habit_type_id: 'ht-run', completed_at: new Date('2026-06-08T06:30:00') }),
+    ];
+    const [run] = computeHabitAdherence([schedule('ht-run', 'Lari')], completed, now);
+    expect(run).toMatchObject({ habitTypeName: 'Lari', scheduled: 7, logged: 2 });
+  });
+
+  it('sorts the most-neglected habit first', () => {
+    const completed = [
+      mission({ habit_type_id: 'ht-run', completed_at: new Date('2026-06-06T06:30:00') }),
+    ];
+    const metrics = computeHabitAdherence(
+      [schedule('ht-run', 'Lari'), schedule('ht-read', 'Baca')],
+      completed,
+      now
+    );
+    expect(metrics.map(m => m.habitTypeName)).toEqual(['Baca', 'Lari']); // 0/7 before 1/7
+  });
+
+  it('surfaces the metric block and a neglect flag in the morning summary', () => {
+    const ctx = buildCoachingContext({
+      slot: 'pagi',
+      activeMission: null,
+      held: [],
+      recentCompleted: [],
+      schedules: [schedule('ht-read', 'Baca')],
+      loggedTypeIds: new Set<string>(),
+      now,
+    });
+    const summary = contextSummary(ctx);
+    expect(summary).toContain('METRIK KEBIASAAN');
+    expect(summary).toContain('Baca: 0/7');
+    expect(summary).toContain('TERABAIKAN');
+  });
+
+  it('is empty for non-morning slots', () => {
+    const ctx = buildCoachingContext({
+      slot: 'siang',
+      activeMission: null,
+      held: [],
+      recentCompleted: [],
+      schedules: [schedule('ht-read', 'Baca')],
+      loggedTypeIds: new Set<string>(),
+      now,
+    });
+    expect(ctx.habitMetrics).toEqual([]);
   });
 });
 

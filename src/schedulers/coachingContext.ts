@@ -148,9 +148,16 @@ export function contextSummary(ctx: CoachingContext): string {
   );
   lines.push(`- Total misi selesai 7 hari terakhir: ${ctx.weekCompletedCount}`);
 
-  const missed = ctx.due.filter(d => d.status === 'missed').map(d => d.schedule.habit_type_name);
+  const missed = ctx.due.filter(d => d.status === 'missed');
   const dueNow = ctx.due.filter(d => d.status === 'due').map(d => d.schedule.habit_type_name);
-  if (missed.length > 0) lines.push(`- Kebiasaan TERLEWAT hari ini: ${missed.join(', ')}`);
+  // Include the schedule + how overdue so the coach can explain WHY it was missed.
+  if (missed.length > 0) {
+    lines.push(
+      `- Kebiasaan TERLEWAT hari ini: ${missed
+        .map(d => `${d.schedule.habit_type_name} (dijadwalkan ${d.schedule.expected_at.slice(0, 5)}, sudah lewat ${formatMinutes(d.minutesLate)})`)
+        .join(', ')}`
+    );
+  }
   if (dueNow.length > 0) lines.push(`- Kebiasaan menunggu (masih sempat): ${dueNow.join(', ')}`);
   if (missed.length === 0 && dueNow.length === 0) lines.push('- Kebiasaan terjadwal: aman / tidak ada yang jatuh tempo');
 
@@ -198,6 +205,7 @@ ${SLOT_ANGLE[ctx.slot]}
 ATURAN WAJIB:
 - Maksimal 4 kalimat. Tegas, padat, tanpa basa-basi.
 - Setiap pesan HARUS (1) membangkitkan SEMANGAT untuk mengejar mimpi, dan (2) menumbuhkan rasa TAKUT KEHILANGAN MIMPI itu jika disiplin diabaikan (loss aversion).
+- Jika ada kebiasaan yang TERLEWAT, SEBUTKAN namanya dan JELASKAN singkat bahwa itu terlewat (kapan dijadwalkan, sudah lewat berapa lama) sebagai kerugian nyata hari ini.
 - Acu data nyata di bawah; jangan mengarang angka.
 - Boleh pakai 1-2 emoji dan tag <b></b> untuk penekanan (format Telegram HTML). Jangan pakai markdown.
 - Akhiri dengan satu perintah aksi yang konkret.

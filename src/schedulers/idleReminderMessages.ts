@@ -15,33 +15,25 @@ function pick<T>(items: T[], rng: Rng): T {
 
 /** Generic idle nudges — used when no scheduled habit is currently due or missed. */
 export const IDLE_MESSAGES: string[] = [
-  `🚨 <b>HEY, KAMU LAGI NGAPAIN?</b>
+  `🚨 <b>KAMU LAGI NGAPAIN?</b>
+15 menit tanpa misi aktif.
 
-Sudah 15 menit tidak ada misi aktif. Tidak ada aktivitas yang tercatat.
-Kamu istirahat atau memang tidak ngapa-ngapain?
+<b>WAJIB:</b> Ketik <i>"mulai [aktivitas]"</i>`,
 
-<b>WAJIB:</b> Sebutkan misi kamu. Ketik ke OpenClaw: <i>"mulai [aktivitas]"</i>`,
+  `🪖 <b>LAPOR: SEDANG APA?</b>
+Radar kosong, tidak ada misi berjalan.
 
-  `🪖 <b>LAPOR: KAMU SEDANG APA?</b>
+<b>EKSEKUSI:</b> Ketik <i>"mulai [aktivitas]"</i>`,
 
-Radar kosong — tidak ada misi berjalan. Waktu netral itu waktu yang hilang.
-Ambil kendali sekarang, jangan biarkan jam yang memimpin.
+  `⏱️ <b>JAM JALAN, KAMU DIAM</b>
+Tiap menit nganggur tak akan kembali.
 
-<b>EKSEKUSI:</b> Ketik ke OpenClaw: <i>"mulai [aktivitas]"</i>`,
+<b>GERAK:</b> Ketik <i>"mulai [aktivitas]"</i>`,
 
-  `⏱️ <b>JAM TERUS BERJALAN, KAMU TIDAK</b>
+  `🎯 <b>DISIPLIN ≠ MENUNGGU MOOD</b>
+Kamu idle — tarik fokusmu kembali.
 
-Tidak ada misi aktif. Setiap menit menganggur tidak akan kembali.
-Pilih satu hal dan kerjakan — sekarang.
-
-<b>GERAK:</b> Laporkan misimu — ketik <i>"mulai [aktivitas]"</i>`,
-
-  `🎯 <b>DISIPLIN BUKAN MENUNGGU MOOD</b>
-
-Kamu idle. Bukan tubuhmu yang lelah, tapi fokusmu yang kabur.
-Tarik kembali. Tentukan target berikutnya.
-
-<b>SEKARANG:</b> Tidak ada alasan. Ketik <i>"mulai [aktivitas]"</i>`,
+<b>SEKARANG:</b> Ketik <i>"mulai [aktivitas]"</i>`,
 ];
 
 /** First generic variant, exported for callers/tests that want a stable string. */
@@ -54,15 +46,9 @@ export function randomIdleMessage(rng: Rng = Math.random): string {
 
 // ── Held (on-hold) mission reminder ──────────────────────────────────────────
 const HELD_HEADERS = [
-  '⏸️ <b>MISI TERTUNDA MENUNGGU KAMU</b>',
+  '⏸️ <b>MISI TERTUNDA</b>',
   '🪖 <b>ADA MISI YANG KAMU GANTUNG</b>',
-  '⚠️ <b>JANGAN BIARKAN MISI INI TERLANTAR</b>',
-];
-
-const HELD_CLOSERS = [
-  'Misi yang digantung itu mimpi yang ditunda. Tutup sekarang sebelum lupa.',
-  'Setiap misi tertunda menambah beban mental. Selesaikan atau batalkan dengan sadar.',
-  'Disiplin = menutup yang sudah kamu mulai. Lanjutkan salah satunya sekarang.',
+  '⚠️ <b>MISI INI TERLANTAR</b>',
 ];
 
 /**
@@ -75,49 +61,28 @@ export function buildHeldMissionReminder(
 ): string | null {
   if (held.length === 0) return null;
   const list = held.map(m => `⏸️ <b>${m.title}</b>`).join('\n');
-  return `${pick(HELD_HEADERS, rng)}\n\n${list}\n\n${pick(HELD_CLOSERS, rng)}\n\n<b>AKSI:</b> Lanjutkan (mulai lagi) atau batalkan misi di atas.`;
+  return `${pick(HELD_HEADERS, rng)}\n${list}\n\n<b>AKSI:</b> Lanjutkan atau batalkan.`;
 }
 
 const MISSED_HEADERS = [
-  '☠️ <b>KAMU GAGAL MENEPATI JADWAL HARI INI</b>',
-  '💀 <b>KOMITMEN KAMU SEDANG SEKARAT</b>',
-  '⚠️ <b>KAMU MENGKHIANATI RENCANA SENDIRI</b>',
-  '🚨 <b>JADWAL TERBENGKALAI — INI KEGAGALAN</b>',
+  '☠️ <b>KAMU GAGAL MENEPATI JADWAL</b>',
+  '💀 <b>KOMITMEN KAMU SEKARAT</b>',
+  '⚠️ <b>KAMU INGKAR JANJI SENDIRI</b>',
+  '🚨 <b>JADWAL TERBENGKALAI</b>',
 ];
 
 const DUE_HEADERS = [
-  '⏳ <b>JATAH WAKTU KAMU HAMPIR HABIS</b>',
-  '🔥 <b>JENDELA EKSEKUSI SEDANG MENUTUP</b>',
-  '⏰ <b>CLOCK BERDETAK — JANGAN SAMPAI GAGAL</b>',
-  '🎯 <b>SEKARANG ATAU TIDAK SAMA SEKALI</b>',
-];
-
-const INTROS = [
-  'Kamu idle. Ini yang kamu janjikan ke diri sendiri dan belum kamu kerjakan:',
-  'Kamu diam. Padahal ini sudah kamu jadwalkan dan masih kosong:',
-  'Tidak ada misi aktif. Komitmen yang menunggu kamu tepati:',
-  'Kamu santai, tapi daftar ini sedang menatap kamu:',
-];
-
-const MISSED_CLOSERS = [
-  'Hari ini tidak bisa kamu ulang. Jangan biarkan rantai disiplin kamu putus lagi.',
-  'Waktu yang lewat tidak akan kembali. Tebus sisa hari ini.',
-  'Kegagalan kecil menumpuk jadi kebiasaan. Putus siklusnya sekarang.',
-  'Kamu lebih baik dari ini. Buktikan di sisa hari ini.',
-];
-
-const DUE_CLOSERS = [
-  'Window masih terbuka — TAPI TIDAK LAMA. Eksekusi sebelum jadi catatan GAGAL.',
-  'Masih sempat. Bergerak sekarang sebelum jendela ini tertutup.',
-  'Disiplin = melakukan saat tidak ingin. Sekarang waktunya.',
-  'Jangan tunggu mood. Mulai, dan momentum akan menyusul.',
+  '⏳ <b>JATAH WAKTU HAMPIR HABIS</b>',
+  '🔥 <b>JENDELA EKSEKUSI MENUTUP</b>',
+  '⏰ <b>JANGAN SAMPAI GAGAL</b>',
+  '🎯 <b>SEKARANG ATAU TIDAK</b>',
 ];
 
 const CTAS = [
-  '<b>WAJIB:</b> Mulai sekarang. Ketik ke OpenClaw: <i>"mulai [aktivitas]"</i>',
-  '<b>EKSEKUSI:</b> Ketik ke OpenClaw: <i>"mulai [aktivitas]"</i>',
-  '<b>GERAK:</b> Laporkan misimu — ketik <i>"mulai [aktivitas]"</i>',
-  '<b>SEKARANG:</b> Tidak ada alasan. Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>WAJIB:</b> Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>EKSEKUSI:</b> Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>GERAK:</b> Ketik <i>"mulai [aktivitas]"</i>',
+  '<b>SEKARANG:</b> Ketik <i>"mulai [aktivitas]"</i>',
 ];
 
 export type HabitDueStatus = 'due' | 'missed';
@@ -189,9 +154,9 @@ function habitLine(item: DueHabit): string {
   const name = `<b>${schedule.habit_type_name}</b> (${schedule.category_name})`;
   const at = hhmm(schedule.expected_at);
   if (status === 'missed') {
-    return `☠️ ${name} — jadwal ${at}, sudah LEWAT ${formatMinutes(minutesLate)}`;
+    return `☠️ ${name} — ${at}, LEWAT ${formatMinutes(minutesLate)}`;
   }
-  return `⏳ ${name} — jadwal ${at}, tersisa ${formatMinutes(minutesLeft)} sebelum GAGAL`;
+  return `⏳ ${name} — ${at}, tersisa ${formatMinutes(minutesLeft)}`;
 }
 
 /**
@@ -199,9 +164,9 @@ function habitLine(item: DueHabit): string {
  * are about to lose (or have already lost) today. Returns null when nothing is
  * due or missed — caller should fall back to the generic idle prompt.
  *
- * The header, intro, closer, and call-to-action are picked at random from the
- * copy pools above so the message reads differently each time. Pass a fixed
- * `rng` for deterministic output.
+ * The header and call-to-action are picked at random from the copy pools above
+ * so the message reads differently each time. Pass a fixed `rng` for
+ * deterministic output.
  */
 export function buildHabitLossAversionMessage(
   schedules: HabitScheduleWithNames[],
@@ -212,24 +177,19 @@ export function buildHabitLossAversionMessage(
   const due = selectDueHabits(schedules, loggedTypeIds, now);
   if (due.length === 0) return null;
 
-  const lines = due.map(habitLine).join('\n');
-  const hasMissed = due.some(d => d.status === 'missed');
+  // Show at most ONE missed habit (the earliest/most overdue, already sorted
+  // first) to keep the nudge focused; still list habits that are merely due.
+  const missed = due.filter(d => d.status === 'missed').slice(0, 1);
+  const dueNow = due.filter(d => d.status === 'due');
+  const shown = [...missed, ...dueNow];
+
+  const lines = shown.map(habitLine).join('\n');
+  const hasMissed = missed.length > 0;
 
   const header = pick(hasMissed ? MISSED_HEADERS : DUE_HEADERS, rng);
-  const intro = pick(INTROS, rng);
-  const closer = pick(hasMissed ? MISSED_CLOSERS : DUE_CLOSERS, rng);
   const cta = pick(CTAS, rng);
 
-  return `\
-${header}
-
-${intro}
-
-${lines}
-
-${closer}
-
-${cta}`;
+  return `${header}\n${lines}\n\n${cta}`;
 }
 
 /**
@@ -285,9 +245,8 @@ export function buildGenericIdleMessage(
 
   const at = hhmm(seharusnya.expected_at);
   const hint =
-    `⚠️ <b>SEHARUSNYA:</b> Kamu sudah menyelesaikan ` +
-    `<b>${seharusnya.habit_type_name}</b> (${seharusnya.category_name}) ` +
-    `sejak jam ${at}.`;
+    `⚠️ <b>SEHARUSNYA:</b> <b>${seharusnya.habit_type_name}</b> ` +
+    `(${seharusnya.category_name}) sejak ${at}.`;
 
   // Inject before the final CTA paragraph
   const paragraphs = base.split('\n\n');

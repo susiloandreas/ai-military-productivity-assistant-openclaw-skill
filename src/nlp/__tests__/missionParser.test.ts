@@ -147,10 +147,16 @@ describe('parseIntent', () => {
     expect(parseIntent('complete the auth refactor')).toBeNull();
   });
 
-  it('classifies abort intents', () => {
-    expect(parseIntent('abort')).toEqual({ kind: 'abort' });
-    expect(parseIntent('batalkan misi')).toEqual({ kind: 'abort' });
-    expect(parseIntent('stop')).toEqual({ kind: 'abort' });
+  it('classifies abort intents (no target)', () => {
+    expect(parseIntent('abort')).toEqual({ kind: 'abort', target: null });
+    expect(parseIntent('batalkan misi')).toEqual({ kind: 'abort', target: null });
+    expect(parseIntent('stop')).toEqual({ kind: 'abort', target: null });
+  });
+
+  it('captures an abort target (title fragment) after the trigger', () => {
+    expect(parseIntent('batalkan misi baca paper')).toEqual({ kind: 'abort', target: 'baca paper' });
+    expect(parseIntent('batalkan baca paper')).toEqual({ kind: 'abort', target: 'baca paper' });
+    expect(parseIntent('abort refactor')).toEqual({ kind: 'abort', target: 'refactor' });
   });
 
   it('classifies extend intents and pulls the duration', () => {

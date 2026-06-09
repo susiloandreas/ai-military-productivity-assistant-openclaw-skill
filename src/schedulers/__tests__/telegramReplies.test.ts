@@ -12,6 +12,7 @@ import {
   replyHelp,
   replyHabitsToday,
   summarizeTodayHabits,
+  replyAbortNeedsTarget,
   replyError,
 } from '../telegramReplies';
 import { Mission, HabitScheduleWithNames } from '../../types';
@@ -146,6 +147,14 @@ describe('telegramReplies', () => {
 
   it('wraps an error message', () => {
     expect(replyError('No active mission to complete.', firstRng)).toContain('No active mission');
+  });
+
+  it('asks which mission to abort, listing the candidates', () => {
+    const out = replyAbortNeedsTarget([{ title: 'Baca paper' }, { title: 'Refactor' }]);
+    expect(out).toMatch(/MISI MANA/i);
+    expect(out).toContain('Baca paper');
+    expect(out).toContain('Refactor');
+    expect(out).toContain('batalkan Baca paper'); // example uses the first candidate
   });
 
   it('lists available commands in the help reply', () => {

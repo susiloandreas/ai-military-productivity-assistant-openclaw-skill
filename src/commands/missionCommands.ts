@@ -87,7 +87,8 @@ export async function handleMissionCommand(
       }
 
       case 'abort': {
-        const mission = await service.abort(userId);
+        const target = args.slice(1).join(' ').trim() || null;
+        const mission = await service.abort(userId, target);
         return formatSuccess('MISSION ABORTED', [`Mission: ${mission.title}`]);
       }
 

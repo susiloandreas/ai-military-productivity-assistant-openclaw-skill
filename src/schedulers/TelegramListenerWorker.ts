@@ -18,8 +18,10 @@ import {
   replyExpiryResolved,
   replyHelp,
   replyHabitsToday,
+  replyAbortNeedsTarget,
   replyError,
 } from './telegramReplies';
+import { AbortNeedsTargetError } from '../services/MissionService';
 import { DEFAULT_USER_ID } from '../types';
 
 /** Local midnight for "logged today" lookups. */
@@ -107,7 +109,7 @@ async function handleText(text: string): Promise<void> {
         break;
       }
       case 'abort': {
-        const mission = await missionService.abort(DEFAULT_USER_ID);
+        const mission = await missionService.abort(DEFAULT_USER_ID, intent.target);
         await sendTelegramMessage(replyAborted(mission));
         console.log(`[Telegram Listener] Aborted mission "${mission.title}"`);
         break;
@@ -148,6 +150,11 @@ async function handleText(text: string): Promise<void> {
       }
     }
   } catch (err) {
+    if (err instanceof AbortNeedsTargetError) {
+      await sendTelegramMessage(replyAbortNeedsTarget(err.candidates)).catch(() => null);
+      console.log('[Telegram Listener] Abort needs a target — asked which mission');
+      return;
+    }
     const message = (err as Error).message;
     console.warn(`[Telegram Listener] ${intent.kind} failed: ${message}`);
     await sendTelegramMessage(replyError(message)).catch(() => null);

@@ -18,6 +18,21 @@ export interface MissionStartResult {
   heldMission: Mission | null;
 }
 
+/**
+ * Thrown when an abort cannot pick a single mission — either the target is
+ * ambiguous or there are multiple held missions and no target. Carries the
+ * candidate missions so the caller can ask the user which one to cancel.
+ */
+export class AbortNeedsTargetError extends Error {
+  constructor(
+    public readonly candidates: Mission[],
+    message = 'Multiple missions could be aborted — specify which one.'
+  ) {
+    super(message);
+    this.name = 'AbortNeedsTargetError';
+  }
+}
+
 export interface RetroactiveLogResult {
   mission: Mission;
   /** Progress on the goal tied to this specific habit type, if one is active. */
@@ -169,11 +184,38 @@ export class MissionService {
     return { habitGoalProgress, goalProgress };
   }
 
-  async abort(userId: string): Promise<Mission> {
-    const mission = await this.missionRepo.getActive(userId);
-    if (!mission) throw new Error('No active mission to abort.');
-    await this.etaQueue.remove(`eta-${mission.id}`).catch(() => null);
-    return this.missionRepo.updateStatus(mission.id, 'failed');
+  /**
+   * Cancel a mission (mark it `failed`). With a `target` title fragment, cancels
+   * the matching active/held mission. Without one, cancels the active mission, or
+   * the single held mission when none is active. Throws AbortNeedsTargetError when
+   * the choice is ambiguous (target matches several, or several held and none active).
+   */
+  async abort(userId: string, target?: string | null): Promise<Mission> {
+    const [active, held] = await Promise.all([
+      this.missionRepo.getActive(userId),
+      this.missionRepo.getHeld(userId),
+    ]);
+
+    const cancel = async (m: Mission): Promise<Mission> => {
+      await this.etaQueue.remove(`eta-${m.id}`).catch(() => null);
+      return this.missionRepo.updateStatus(m.id, 'failed');
+    };
+
+    const fragment = target?.trim().toLowerCase();
+    if (fragment) {
+      const candidates = [...(active ? [active] : []), ...held];
+      const matches = candidates.filter(m => m.title.toLowerCase().includes(fragment));
+      if (matches.length === 0) throw new Error(`No active or held mission matching "${target!.trim()}" to abort.`);
+      if (matches.length > 1) {
+        throw new AbortNeedsTargetError(matches, `More than one mission matches "${target!.trim()}" — name it more precisely.`);
+      }
+      return cancel(matches[0]);
+    }
+
+    if (active) return cancel(active);
+    if (held.length === 1) return cancel(held[0]);
+    if (held.length > 1) throw new AbortNeedsTargetError(held);
+    throw new Error('No active or held mission to abort.');
   }
 
   async extend(userId: string, additionalStr: string): Promise<Mission> {

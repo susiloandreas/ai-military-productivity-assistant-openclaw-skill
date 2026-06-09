@@ -10,7 +10,7 @@ jest.mock('bullmq', () => ({
   Worker: jest.fn(),
 }));
 
-import { MissionService } from '../../services/MissionService';
+import { MissionService, AbortNeedsTargetError } from '../../services/MissionService';
 import { MissionRepository } from '../../repositories/MissionRepository';
 import { GoalRepository } from '../../repositories/GoalRepository';
 import { HabitRepository } from '../../repositories/HabitRepository';
@@ -336,19 +336,75 @@ describe('MissionService', () => {
   });
 
   describe('abort', () => {
-    it('marks mission as failed', async () => {
-      missionRepo.getActive.mockResolvedValue(makeMission());
-      missionRepo.updateStatus.mockResolvedValue(makeMission({ status: 'failed' }));
+    beforeEach(() => {
+      missionRepo.getHeld.mockResolvedValue([]);
+      missionRepo.updateStatus.mockImplementation((id, status) =>
+        Promise.resolve(makeMission({ id, status }))
+      );
+    });
+
+    it('aborts the active mission when no target is given', async () => {
+      missionRepo.getActive.mockResolvedValue(makeMission({ id: 'active-1' }));
 
       const result = await service.abort('user-1');
 
-      expect(missionRepo.updateStatus).toHaveBeenCalledWith('mission-1', 'failed');
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith('active-1', 'failed');
       expect(result.status).toBe('failed');
     });
 
-    it('throws when no active mission', async () => {
+    it('aborts the single held mission when none is active', async () => {
       missionRepo.getActive.mockResolvedValue(null);
-      await expect(service.abort('user-1')).rejects.toThrow('No active mission');
+      missionRepo.getHeld.mockResolvedValue([makeMission({ id: 'held-1', status: 'paused' })]);
+
+      const result = await service.abort('user-1');
+
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith('held-1', 'failed');
+      expect(result.status).toBe('failed');
+    });
+
+    it('asks which mission when several are held and none active', async () => {
+      missionRepo.getActive.mockResolvedValue(null);
+      const held = [makeMission({ id: 'h1', title: 'A' }), makeMission({ id: 'h2', title: 'B' })];
+      missionRepo.getHeld.mockResolvedValue(held);
+
+      await expect(service.abort('user-1')).rejects.toBeInstanceOf(AbortNeedsTargetError);
+      expect(missionRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('aborts a held mission matched by title fragment', async () => {
+      missionRepo.getActive.mockResolvedValue(null);
+      missionRepo.getHeld.mockResolvedValue([
+        makeMission({ id: 'h1', title: 'Baca paper' }),
+        makeMission({ id: 'h2', title: 'Refactor parser' }),
+      ]);
+
+      const result = await service.abort('user-1', 'baca');
+
+      expect(missionRepo.updateStatus).toHaveBeenCalledWith('h1', 'failed');
+      expect(result.status).toBe('failed');
+    });
+
+    it('throws when the target matches nothing', async () => {
+      missionRepo.getActive.mockResolvedValue(makeMission({ title: 'Coding' }));
+      await expect(service.abort('user-1', 'tennis')).rejects.toThrow(/matching "tennis"/);
+      expect(missionRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('asks to be precise when the target is ambiguous', async () => {
+      missionRepo.getActive.mockResolvedValue(null);
+      missionRepo.getHeld.mockResolvedValue([
+        makeMission({ id: 'h1', title: 'Read paper A' }),
+        makeMission({ id: 'h2', title: 'Read paper B' }),
+      ]);
+
+      await expect(service.abort('user-1', 'read paper')).rejects.toBeInstanceOf(AbortNeedsTargetError);
+      expect(missionRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('throws when there is nothing to abort', async () => {
+      missionRepo.getActive.mockResolvedValue(null);
+      missionRepo.getHeld.mockResolvedValue([]);
+      await expect(service.abort('user-1')).rejects.toThrow('No active or held mission to abort.');
     });
   });
 

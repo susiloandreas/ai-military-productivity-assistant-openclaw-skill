@@ -26,7 +26,7 @@ export interface ParsedMission {
 export type ParsedIntent =
   | ({ kind: 'start' } & ParsedMission)
   | { kind: 'complete'; actualStr: string | null }
-  | { kind: 'abort' }
+  | { kind: 'abort'; target: string | null }
   | { kind: 'extend'; extendStr: string | null }
   | { kind: 'status' }
   | { kind: 'help' }
@@ -309,8 +309,13 @@ export function parseIntent(raw: string): ParsedIntent | null {
     if (leftoverTitle(rest) === '') return { kind: 'complete', actualStr: etaStr };
   }
 
-  // Abort.
-  if (matchTrigger(lower, ABORT_TRIGGERS)) return { kind: 'abort' };
+  // Abort — keep any text after the trigger as the target mission (a title
+  // fragment), e.g. "batalkan misi baca paper" → target "baca paper".
+  const abortTrigger = matchTrigger(lower, ABORT_TRIGGERS);
+  if (abortTrigger) {
+    const target = leftoverTitle(text.slice(abortTrigger.length)) || null;
+    return { kind: 'abort', target };
+  }
 
   // Extend — pull whatever duration follows the trigger (may be null).
   const extendTrigger = matchTrigger(lower, EXTEND_TRIGGERS);

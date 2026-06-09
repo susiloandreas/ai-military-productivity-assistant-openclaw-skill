@@ -172,6 +172,12 @@ export function replyAborted(mission: Mission, rng: Rng = Math.random): string {
   return `${pick(ABORTED_HEADERS, rng)}\n\n📌 <b>${mission.title}</b>\n\n${pick(ABORTED_CLOSERS, rng)}`;
 }
 
+/** Asked when an abort can't pick one mission — lists candidates to name. */
+export function replyAbortNeedsTarget(candidates: { title: string }[]): string {
+  const list = candidates.map(m => `⏸️ <b>${m.title}</b>`).join('\n');
+  return `⚠️ <b>MISI MANA YANG DIBATALKAN?</b>\n\n${list}\n\n<b>SEBUTKAN:</b> mis. <i>"batalkan ${candidates[0]?.title ?? '<judul>'}"</i>`;
+}
+
 // ── Mission extended ─────────────────────────────────────────────────────────
 const EXTENDED_HEADERS = [
   '⏳ <b>WAKTU DITAMBAH — TIDAK ADA ALASAN LAGI</b>',

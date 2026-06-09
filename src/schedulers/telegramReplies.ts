@@ -4,7 +4,7 @@
  * mirroring the idle-reminder copy pools. All builders take an injectable `rng`
  * so tests can be deterministic.
  */
-import { Mission } from '../types';
+import { Mission, HabitScheduleWithNames } from '../types';
 import { MissionCompleteResult } from '../services/MissionService';
 import { formatMinutes } from '../utils/duration';
 
@@ -250,4 +250,96 @@ export function replyError(message: string, rng: Rng = Math.random): string {
     rng
   );
   return `${intro}\n\n${message}`;
+}
+
+// ── Help / command menu ──────────────────────────────────────────────────────
+/** Static list of what the bot understands. Natural language — not rigid syntax. */
+export function replyHelp(): string {
+  return `🤖 <b>PERINTAH TERSEDIA</b>
+
+🎯 <b>Mulai misi</b> — <i>"mulai &lt;aktivitas&gt; 1 jam #kategori"</i>
+✅ <b>Selesai</b> — <i>"selesai"</i> / <i>"done 45 menit"</i>
+➕ <b>Perpanjang</b> — <i>"perpanjang 30 menit"</i>
+❌ <b>Batalkan</b> — <i>"batalkan misi"</i>
+📊 <b>Status misi</b> — <i>"status"</i>
+📋 <b>Kebiasaan hari ini</b> — <i>"kebiasaan"</i>
+🆘 <b>Bantuan</b> — <i>"help"</i>
+
+Tulis dalam bahasa biasa — tidak perlu format kaku.`;
+}
+
+// ── Today's habits ───────────────────────────────────────────────────────────
+export type TodayHabitStatus = 'done' | 'missed' | 'due' | 'upcoming';
+
+export interface TodayHabit {
+  name: string;
+  category: string;
+  /** Scheduled time 'HH:MM'. */
+  at: string;
+  status: TodayHabitStatus;
+}
+
+/** 'HH:MM[:SS]' → minutes since midnight. */
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * From the active schedules, the habits scheduled for *today* (local weekday),
+ * each tagged done / missed / due / upcoming, sorted by scheduled time. Pure —
+ * `now` and the logged-type set are supplied by the caller.
+ */
+export function summarizeTodayHabits(
+  schedules: HabitScheduleWithNames[],
+  loggedTypeIds: Set<string>,
+  now: Date = new Date()
+): TodayHabit[] {
+  const weekday = now.getDay();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  return schedules
+    .filter(s => s.days_of_week.includes(weekday))
+    .map(s => {
+      const start = timeToMinutes(s.expected_at);
+      const end = start + s.grace_minutes;
+      let status: TodayHabitStatus;
+      if (loggedTypeIds.has(s.habit_type_id)) status = 'done';
+      else if (nowMin < start) status = 'upcoming';
+      else if (nowMin <= end) status = 'due';
+      else status = 'missed';
+      return { name: s.habit_type_name, category: s.category_name, at: s.expected_at.slice(0, 5), status };
+    })
+    .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+const TODAY_HABIT_ICON: Record<TodayHabitStatus, string> = {
+  done: '✅',
+  missed: '☠️',
+  due: '⏳',
+  upcoming: '⬜',
+};
+
+const TODAY_HABIT_LABEL: Record<TodayHabitStatus, string> = {
+  done: 'selesai',
+  missed: 'terlewat',
+  due: 'jatuh tempo',
+  upcoming: 'nanti',
+};
+
+/** Today's scheduled habits with their status — answer to the "kebiasaan" query. */
+export function replyHabitsToday(
+  schedules: HabitScheduleWithNames[],
+  loggedTypeIds: Set<string>,
+  now: Date = new Date()
+): string {
+  const items = summarizeTodayHabits(schedules, loggedTypeIds, now);
+  if (items.length === 0) {
+    return `📋 <b>KEBIASAAN HARI INI</b>\n\nTidak ada kebiasaan terjadwal hari ini.`;
+  }
+  const lines = items.map(
+    h => `${TODAY_HABIT_ICON[h.status]} <b>${h.name}</b> (${h.category}) — ${h.at} · ${TODAY_HABIT_LABEL[h.status]}`
+  );
+  const done = items.filter(h => h.status === 'done').length;
+  return `📋 <b>KEBIASAAN HARI INI</b> (${done}/${items.length} selesai)\n\n${lines.join('\n')}`;
 }

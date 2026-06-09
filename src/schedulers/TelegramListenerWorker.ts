@@ -16,9 +16,18 @@ import {
   replyNotesSaved,
   replyExpiryNeedsBoth,
   replyExpiryResolved,
+  replyHelp,
+  replyHabitsToday,
   replyError,
 } from './telegramReplies';
 import { DEFAULT_USER_ID } from '../types';
+
+/** Local midnight for "logged today" lookups. */
+function startOfToday(now: Date): Date {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 // ── Dependency wiring (mirrors server.ts) ────────────────────────────────────
 const missionRepo = new MissionRepository();
@@ -120,6 +129,21 @@ async function handleText(text: string): Promise<void> {
         ]);
         await sendTelegramMessage(replyStatus(mission, held));
         console.log('[Telegram Listener] Reported mission status');
+        break;
+      }
+      case 'help': {
+        await sendTelegramMessage(replyHelp());
+        console.log('[Telegram Listener] Sent command help');
+        break;
+      }
+      case 'habits': {
+        const now = new Date();
+        const [schedules, loggedTypeIds] = await Promise.all([
+          habitRepo.getActiveSchedules(DEFAULT_USER_ID),
+          missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now)),
+        ]);
+        await sendTelegramMessage(replyHabitsToday(schedules, new Set(loggedTypeIds), now));
+        console.log("[Telegram Listener] Reported today's habits");
         break;
       }
     }

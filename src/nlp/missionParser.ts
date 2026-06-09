@@ -28,7 +28,9 @@ export type ParsedIntent =
   | { kind: 'complete'; actualStr: string | null }
   | { kind: 'abort' }
   | { kind: 'extend'; extendStr: string | null }
-  | { kind: 'status' };
+  | { kind: 'status' }
+  | { kind: 'help' }
+  | { kind: 'habits' };
 
 // ── Triggers ──────────────────────────────────────────────────────────────
 // "Strong" start verbs fire on their own. Checked longest-first so
@@ -116,6 +118,38 @@ const STATUS_PHRASES = new Set([
   'what am i doing',
   'whats my mission',
   'what is my mission',
+]);
+
+// Help / command menu — whole-message match (a leading slash is stripped by
+// normalize, so "/help" arrives as "help").
+const HELP_PHRASES = new Set([
+  'help',
+  'bantuan',
+  'menu',
+  'commands',
+  'command',
+  'perintah',
+  'daftar perintah',
+  'list command',
+  'list commands',
+  'what can you do',
+]);
+
+// Today's scheduled habits — whole-message match.
+const HABITS_PHRASES = new Set([
+  'habits',
+  'habit',
+  'kebiasaan',
+  'habit hari ini',
+  'kebiasaan hari ini',
+  'jadwal',
+  'jadwal hari ini',
+  'jadwal kebiasaan',
+  'daftar habit',
+  'daftar kebiasaan',
+  'list habit',
+  'habit list',
+  'today habits',
 ]);
 
 // Connector words stripped before/after a duration or at the title edges.
@@ -262,6 +296,10 @@ export function parseIntent(raw: string): ParsedIntent | null {
 
   // Status — whole-message match only (avoids swallowing "misi coding 1h").
   if (STATUS_PHRASES.has(lower)) return { kind: 'status' };
+
+  // Help and today's-habits queries — whole-message matches.
+  if (HELP_PHRASES.has(lower)) return { kind: 'help' };
+  if (HABITS_PHRASES.has(lower)) return { kind: 'habits' };
 
   // Complete — a confirmation with nothing left over but an optional duration.
   const completeTrigger = matchTrigger(lower, COMPLETE_TRIGGERS);

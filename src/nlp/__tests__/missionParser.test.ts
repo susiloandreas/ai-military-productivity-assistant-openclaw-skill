@@ -168,6 +168,21 @@ describe('parseIntent', () => {
     expect(parseIntent('misi coding 1h')?.kind).toBe('start');
   });
 
+  it('classifies help queries (incl. a leading slash) by whole-message match', () => {
+    expect(parseIntent('help')).toEqual({ kind: 'help' });
+    expect(parseIntent('/help')).toEqual({ kind: 'help' });
+    expect(parseIntent('bantuan')).toEqual({ kind: 'help' });
+    expect(parseIntent('menu')).toEqual({ kind: 'help' });
+  });
+
+  it('classifies today-habits queries by whole-message match', () => {
+    expect(parseIntent('kebiasaan')).toEqual({ kind: 'habits' });
+    expect(parseIntent('/habits')).toEqual({ kind: 'habits' });
+    expect(parseIntent('jadwal hari ini')).toEqual({ kind: 'habits' });
+    // a start that merely contains "habit" is not the habits query
+    expect(parseIntent('mulai habit reading 30m')?.kind).toBe('start');
+  });
+
   it('returns null for unrelated chatter', () => {
     expect(parseIntent('how is the weather today')).toBeNull();
   });

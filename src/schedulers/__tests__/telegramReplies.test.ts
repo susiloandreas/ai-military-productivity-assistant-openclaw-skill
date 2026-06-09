@@ -9,12 +9,34 @@ import {
   replyNotesSaved,
   replyExpiryNeedsBoth,
   replyExpiryResolved,
+  replyHelp,
+  replyHabitsToday,
+  summarizeTodayHabits,
   replyError,
 } from '../telegramReplies';
-import { Mission } from '../../types';
+import { Mission, HabitScheduleWithNames } from '../../types';
 
 // Deterministic rng → always picks the first variant in every copy pool.
 const firstRng = () => 0;
+
+// 2026-06-08 is a Monday (getDay() === 1).
+const MONDAY = (h: number, m = 0) => new Date(2026, 5, 8, h, m, 0);
+
+function habitSchedule(overrides: Partial<HabitScheduleWithNames> = {}): HabitScheduleWithNames {
+  return {
+    id: 's1',
+    user_id: 'u1',
+    habit_type_id: 't1',
+    expected_at: '06:00:00',
+    grace_minutes: 60, // window 06:00–07:00
+    days_of_week: [1, 3, 5],
+    active: true,
+    created_at: MONDAY(0),
+    habit_type_name: 'Lari Pagi',
+    category_name: 'Fisik',
+    ...overrides,
+  } as HabitScheduleWithNames;
+}
 
 function mission(overrides: Partial<Mission> = {}): Mission {
   return {
@@ -124,5 +146,59 @@ describe('telegramReplies', () => {
 
   it('wraps an error message', () => {
     expect(replyError('No active mission to complete.', firstRng)).toContain('No active mission');
+  });
+
+  it('lists available commands in the help reply', () => {
+    const help = replyHelp();
+    expect(help).toContain('PERINTAH TERSEDIA');
+    expect(help).toMatch(/mulai/i);
+    expect(help).toMatch(/selesai/i);
+    expect(help).toMatch(/status/i);
+    expect(help).toMatch(/kebiasaan/i);
+  });
+});
+
+describe('summarizeTodayHabits', () => {
+  const NONE = new Set<string>();
+
+  it('tags each of today\'s habits done / missed / due / upcoming', () => {
+    const schedules = [
+      habitSchedule({ id: 'a', habit_type_id: 'a', habit_type_name: 'Lari', expected_at: '06:00:00' }), // missed by 08:00
+      habitSchedule({ id: 'b', habit_type_id: 'b', habit_type_name: 'Baca', expected_at: '07:30:00' }), // due (window 07:30–08:30)
+      habitSchedule({ id: 'c', habit_type_id: 'c', habit_type_name: 'Lapor', expected_at: '21:00:00' }), // upcoming
+      habitSchedule({ id: 'd', habit_type_id: 'd', habit_type_name: 'Meditasi', expected_at: '05:00:00' }), // logged → done
+    ];
+    const items = summarizeTodayHabits(schedules, new Set(['d']), MONDAY(8));
+    expect(items.map(i => `${i.name}:${i.status}`)).toEqual([
+      'Meditasi:done', // 05:00 — sorted by time
+      'Lari:missed',
+      'Baca:due',
+      'Lapor:upcoming',
+    ]);
+  });
+
+  it('excludes habits not scheduled for today', () => {
+    // Tuesday is not in [1,3,5]
+    const items = summarizeTodayHabits([habitSchedule({})], NONE, new Date(2026, 5, 9, 8, 0, 0));
+    expect(items).toHaveLength(0);
+  });
+});
+
+describe('replyHabitsToday', () => {
+  it('renders today\'s habits with a done counter', () => {
+    const schedules = [
+      habitSchedule({ id: 'a', habit_type_id: 'a', habit_type_name: 'Lari', expected_at: '06:00:00' }),
+      habitSchedule({ id: 'b', habit_type_id: 'b', habit_type_name: 'Baca', expected_at: '07:30:00' }),
+    ];
+    const out = replyHabitsToday(schedules, new Set(['a']), MONDAY(8));
+    expect(out).toContain('KEBIASAAN HARI INI');
+    expect(out).toContain('(1/2 selesai)');
+    expect(out).toContain('Lari');
+    expect(out).toContain('Baca');
+  });
+
+  it('handles a day with no scheduled habits', () => {
+    const out = replyHabitsToday([habitSchedule({})], new Set(), new Date(2026, 5, 9, 8, 0, 0));
+    expect(out).toContain('Tidak ada kebiasaan terjadwal');
   });
 });

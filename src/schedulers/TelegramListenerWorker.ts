@@ -79,13 +79,17 @@ async function handleText(text: string): Promise<void> {
   // user moved on, so drop the pending prompt and handle the command.
   const awaiting = await missionService.getMissionAwaitingNotes(DEFAULT_USER_ID);
   if (awaiting) {
-    if (!intent) {
-      // An expired mission must be resolved with a status (done / not done) AND notes.
-      if (awaiting.status === 'eta_expired') {
-        const { status, notes } = parseExpiryStatusReply(text);
-        if (!status || !notes) {
+    // An ETA-expired mission must be resolved before anything else. A status reply
+    // ("selesai/belum, <notes>") resolves it; "perpanjang <durasi>" revives it with
+    // more time. Both take precedence over generic intent parsing — otherwise
+    // "selesai, ..." is mistaken for a complete command and "perpanjang" is routed
+    // to a (failing) active-mission extend, which would also orphan this prompt.
+    if (awaiting.status === 'eta_expired') {
+      const { status, notes } = parseExpiryStatusReply(text);
+      if (status) {
+        if (!notes) {
           await sendTelegramMessage(replyExpiryNeedsBoth());
-          return; // keep awaiting until both are provided
+          return; // keep awaiting until both status AND notes are provided
         }
         const result = await missionService.resolveExpiredMission(
           awaiting.id,
@@ -105,13 +109,33 @@ async function handleText(text: string): Promise<void> {
         console.log(`[Telegram Listener] Resolved expired "${result.mission.title}" as ${result.mission.status}`);
         return;
       }
-      // Otherwise (e.g. after a normal completion) any reply is the notes.
+      if (intent?.kind === 'extend') {
+        if (!intent.extendStr) {
+          await sendTelegramMessage(replyNeedExtendDuration());
+          return;
+        }
+        const mission = await missionService.extendExpiredMission(awaiting.id, intent.extendStr);
+        await sendTelegramMessage(replyExtended(mission));
+        console.log(`[Telegram Listener] Revived expired "${mission.title}" with more time`);
+        return;
+      }
+      if (!intent) {
+        // A free-text reply that carries no status — re-prompt for status + notes.
+        await sendTelegramMessage(replyExpiryNeedsBoth());
+        return;
+      }
+      // A different command — the user moved on; drop the prompt and handle it below.
+      await missionService.clearNotesRequest(awaiting.id);
+    } else if (!intent) {
+      // After a normal completion, any free-text reply is captured as the notes.
       const updated = await missionService.recordNotes(awaiting.id, text.trim());
       await sendTelegramMessage(replyNotesSaved(updated));
       console.log(`[Telegram Listener] Saved notes for "${updated.title}"`);
       return;
+    } else {
+      // A command after a completion prompt — user moved on; drop the prompt.
+      await missionService.clearNotesRequest(awaiting.id);
     }
-    await missionService.clearNotesRequest(awaiting.id);
   }
 
   if (!intent) return; // not a recognized request — stay silent

@@ -50,6 +50,7 @@ describe('MissionService', () => {
       getById: jest.fn(),
       updateStatus: jest.fn(),
       extendEta: jest.fn(),
+      reviveWithEta: jest.fn(),
       getRecentCompleted: jest.fn(),
       markEtaExpired: jest.fn(),
       getHeld: jest.fn(),
@@ -417,6 +418,33 @@ describe('MissionService', () => {
 
       expect(missionRepo.extendEta).toHaveBeenCalledWith('mission-1', 30);
       expect(result.eta_minutes).toBe(90);
+    });
+  });
+
+  describe('extendExpiredMission', () => {
+    it('revives an ETA-expired mission with more time', async () => {
+      // Started 50 min ago; +10 min → new total ETA ≈ 60.
+      const startedAt = new Date(Date.now() - 50 * 60 * 1000);
+      missionRepo.getById.mockResolvedValue(
+        makeMission({ status: 'eta_expired', awaiting_notes: true, started_at: startedAt })
+      );
+      missionRepo.reviveWithEta.mockResolvedValue(
+        makeMission({ status: 'active', awaiting_notes: false, eta_minutes: 60 })
+      );
+
+      const result = await service.extendExpiredMission('mission-1', '10m');
+
+      expect(missionRepo.reviveWithEta).toHaveBeenCalledTimes(1);
+      const [id, etaMinutes] = missionRepo.reviveWithEta.mock.calls[0];
+      expect(id).toBe('mission-1');
+      expect(etaMinutes).toBeGreaterThanOrEqual(59); // ~50 elapsed + 10 extra
+      expect(etaMinutes).toBeLessThanOrEqual(61);
+      expect(result.status).toBe('active');
+    });
+
+    it('throws when the mission no longer exists', async () => {
+      missionRepo.getById.mockResolvedValue(null);
+      await expect(service.extendExpiredMission('missing', '10m')).rejects.toThrow('Mission not found.');
     });
   });
 });

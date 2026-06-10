@@ -99,6 +99,19 @@ export class MissionRepository {
     return rows[0];
   }
 
+  /**
+   * Revive an ETA-expired mission: flip it back to 'active', clear the
+   * awaiting-notes flag, and set its total ETA so the timer can be restarted.
+   */
+  async reviveWithEta(id: string, etaMinutes: number): Promise<Mission> {
+    const { rows } = await pool.query<Mission>(
+      `UPDATE missions SET status = 'active', awaiting_notes = FALSE, eta_minutes = $2
+       WHERE id = $1 RETURNING *`,
+      [id, etaMinutes]
+    );
+    return rows[0];
+  }
+
   async getRecentCompleted(userId: string, days = 7): Promise<Mission[]> {
     const { rows } = await pool.query<Mission>(
       `SELECT * FROM missions

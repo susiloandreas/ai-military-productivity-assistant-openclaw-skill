@@ -253,6 +253,29 @@ export class MissionService {
     return updated;
   }
 
+  /**
+   * Extend an ETA-expired mission instead of resolving it: revive it to 'active'
+   * and restart its timer to fire `additionalStr` from now. This lets a user who
+   * just needs a few more minutes reply "perpanjang 10 menit" to the expiry
+   * prompt rather than being forced to close the mission.
+   */
+  async extendExpiredMission(missionId: string, additionalStr: string): Promise<Mission> {
+    const mission = await this.missionRepo.getById(missionId);
+    if (!mission) throw new Error('Mission not found.');
+    const extra = parseDurationToMinutes(additionalStr);
+    const startedAt = mission.started_at ? new Date(mission.started_at) : new Date();
+    const elapsed = Math.max(0, Math.round((Date.now() - startedAt.getTime()) / 60000));
+    // New total ETA so that started_at + eta lands `extra` minutes from now.
+    const updated = await this.missionRepo.reviveWithEta(missionId, elapsed + extra);
+    await this.etaQueue.remove(`eta-${missionId}`).catch(() => null);
+    await this.etaQueue.add(
+      'expire',
+      { missionId },
+      { delay: extra * 60 * 1000, jobId: `eta-${missionId}` }
+    );
+    return updated;
+  }
+
   async getActiveMission(userId: string): Promise<Mission | null> {
     return this.missionRepo.getActive(userId);
   }

@@ -150,8 +150,10 @@ completed today, 7-day momentum, your current streaks, and any scheduled habits 
 already missed. Tone follows the shared gate (above): **competence/mastery by default**,
 with loss-aversion reserved for inflection points and the nightly debrief.
 
-Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-pro`). Each
-call has a per-attempt timeout (`GEMINI_TIMEOUT_MS`, default 60000) and is retried with
+Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-pro`). The daily
+coaching brief uses `GEMINI_MODEL`; the short follow-up messages (completion cheers,
+recovery nudges) use the faster/cheaper `GEMINI_FAST_MODEL` (default `gemini-2.5-flash`).
+Each call has a per-attempt timeout (`GEMINI_TIMEOUT_MS`, default 60000) and is retried with
 exponential backoff on transient failures — timeouts, network errors, and HTTP
 408/429/5xx — up to `GEMINI_RETRIES` extra attempts (default 2). If the key is missing or
 all attempts fail, it falls back to a static slot-specific message, so a nudge always

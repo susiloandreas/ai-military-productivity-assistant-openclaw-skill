@@ -1,5 +1,5 @@
 import { Mission } from '../types';
-import { generateText } from '../utils/gemini';
+import { generateText, fastModel } from '../utils/gemini';
 import { MINIMUM_VIABLE_MINUTES } from '../services/missRecovery';
 import { Tone } from '../services/toneGate';
 
@@ -63,7 +63,11 @@ export function fallbackNextStep(mission: Mission): string {
 /** Generate the nudge via Gemini, falling back to the static message. */
 export async function composeNextStepNudge(mission: Mission, tone: Tone = 'competence'): Promise<string> {
   try {
-    return await generateText(buildNextStepPrompt(mission, tone));
+    // Short message → use the faster model with a tighter token budget.
+    return await generateText(buildNextStepPrompt(mission, tone), {
+      model: fastModel(),
+      maxOutputTokens: 320,
+    });
   } catch (err) {
     console.warn(`[NextStep] Gemini unavailable (${(err as Error).message}) — using fallback`);
     return fallbackNextStep(mission);

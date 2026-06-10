@@ -1,5 +1,5 @@
 import { MissionCompleteResult } from '../services/MissionService';
-import { generateText } from '../utils/gemini';
+import { generateText, fastModel } from '../utils/gemini';
 import { formatMinutes } from '../utils/duration';
 
 /**
@@ -110,7 +110,11 @@ export function fallbackCompletion(result: MissionCompleteResult, streakCount = 
 /** Generate the cheer via Gemini, falling back to the static message. */
 export async function composeCompletionCheer(result: MissionCompleteResult, streakCount = 0): Promise<string> {
   try {
-    return await generateText(buildCompletionPrompt(result, streakCount));
+    // Short message → use the faster model with a tighter token budget.
+    return await generateText(buildCompletionPrompt(result, streakCount), {
+      model: fastModel(),
+      maxOutputTokens: 320,
+    });
   } catch (err) {
     console.warn(`[Completion] Gemini unavailable (${(err as Error).message}) — using fallback`);
     return fallbackCompletion(result, streakCount);

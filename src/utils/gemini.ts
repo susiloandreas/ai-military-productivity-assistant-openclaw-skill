@@ -36,6 +36,13 @@ export class GeminiError extends Error {
   }
 }
 
+/**
+ * Model for short, latency-sensitive messages (completion cheers, recovery
+ * nudges). Defaults to the faster/cheaper flash model; the daily coaching brief
+ * keeps the stronger default model. Override via GEMINI_FAST_MODEL.
+ */
+export const fastModel = (): string => process.env.GEMINI_FAST_MODEL ?? 'gemini-2.5-flash';
+
 function envInt(name: string, fallback: number): number {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? v : fallback;

@@ -272,7 +272,7 @@ Tulis SATU pesan coaching PAGI yang SINGKAT dalam Bahasa Indonesia.
 FOKUS UTAMA: PENGUATAN KOMPETENSI (mastery). Tinjau METRIK KEBIASAAN 7 HARI dan progres di bawah. Soroti KEMAJUAN nyata (streak yang terjaga, kebiasaan dengan kepatuhan terbaik, momentum minggu ini) untuk membangun rasa mampu, lalu beri SATU saran perbaikan konkret untuk hari ini. JANGAN memakai rasa takut/ancaman kehilangan.
 
 ATURAN WAJIB:
-- Maksimal 4 kalimat. Tegas, positif, padat, tanpa basa-basi.
+- Tulis 6–8 kalimat — beri ruang untuk elaborasi yang bermakna, jangan terlalu ringkas. Tetap tegas, positif, dan padat.
 - Acu angka nyata (mis. "Olahraga 4/5", atau streak) agar pujian terasa konkret; jangan mengarang.
 - Beri TEPAT SATU hal yang bisa diperbaiki/ditingkatkan hari ini.
 - Boleh 1-2 emoji dan tag <b></b> (Telegram HTML). Tanpa markdown.
@@ -292,7 +292,7 @@ Tulis SATU pesan coaching PAGI yang SINGKAT dalam Bahasa Indonesia.
 FOKUS UTAMA: LOSS AVERSION. Tinjau METRIK KEBIASAAN 7 HARI di bawah, bukan hanya kemarin. Soroti habit dengan kepatuhan TERBURUK (mis. olahraga yang sering dilewatkan, kerja yang tidak fokus) sebagai kerugian nyata yang menggerus mimpinya, lalu beri SATU saran perbaikan konkret untuk hari ini.
 
 ATURAN WAJIB:
-- Maksimal 4 kalimat. Tegas, padat, tanpa basa-basi.
+- Tulis 6–8 kalimat — beri ruang untuk elaborasi yang bermakna, jangan terlalu ringkas. Tetap tegas dan padat.
 - WAJIB sebut angka metrik habit terburuk (mis. "Olahraga 2/5") agar konfrontasinya nyata, lalu tonjolkan harga yang dibayar jika pola ini berlanjut — bangkitkan rasa TAKUT KEHILANGAN MIMPI.
 - Beri TEPAT SATU hal yang bisa diperbaiki hari ini (what could be improved), berdasarkan habit dengan kepatuhan terburuk minggu ini.
 - Acu data nyata di bawah; jangan mengarang.
@@ -331,7 +331,7 @@ Tugasmu: tulis SATU pesan coaching SINGKAT dalam Bahasa Indonesia.
 ${SLOT_ANGLE[ctx.slot]}
 
 ATURAN WAJIB:
-- Maksimal 4 kalimat. Tegas, padat, tanpa basa-basi.
+- Tulis 6–8 kalimat — beri ruang untuk elaborasi yang bermakna, jangan terlalu ringkas. Tetap tegas dan padat.
 ${toneRule(ctx.tone)}
 - Acu data nyata di bawah; jangan mengarang angka.
 - Boleh pakai 1-2 emoji dan tag <b></b> untuk penekanan (format Telegram HTML). Jangan pakai markdown.

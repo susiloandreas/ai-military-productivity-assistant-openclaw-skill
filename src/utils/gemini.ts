@@ -5,7 +5,8 @@ import https from 'https';
  * SDK, mirroring utils/telegram.ts. Kept behind this single function so the LLM
  * provider can be swapped without touching callers.
  *
- * Requires GEMINI_API_KEY. Model defaults to GEMINI_MODEL or 'gemini-2.5-flash'.
+ * Requires GEMINI_API_KEY. Model defaults to GEMINI_MODEL or 'gemini-2.5-pro'
+ * (stronger model for higher-quality coaching; override via GEMINI_MODEL).
  */
 
 export interface GeminiOptions {
@@ -23,13 +24,15 @@ export function generateText(prompt: string, opts: GeminiOptions = {}): Promise<
       reject(new Error('GEMINI_API_KEY must be set'));
       return;
     }
-    const model = opts.model ?? process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+    const model = opts.model ?? process.env.GEMINI_MODEL ?? 'gemini-2.5-pro';
 
     const body = JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: opts.temperature ?? 0.9,
-        maxOutputTokens: opts.maxOutputTokens ?? 320,
+        // Generous cap so the model has room to elaborate; the prompt's sentence
+        // guidance still controls the actual message length.
+        maxOutputTokens: opts.maxOutputTokens ?? 800,
       },
     });
 

@@ -150,7 +150,7 @@ completed today, 7-day momentum, your current streaks, and any scheduled habits 
 already missed. Tone follows the shared gate (above): **competence/mastery by default**,
 with loss-aversion reserved for inflection points and the nightly debrief.
 
-Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-flash`). If the
+Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`, default `gemini-2.5-pro`). If the
 key is missing or the API fails, it falls back to a static slot-specific message, so a
 nudge always lands. The LLM call is isolated in `src/utils/gemini.ts` and the prompt /
 context in `src/schedulers/coachingContext.ts`, so the provider is easy to swap.

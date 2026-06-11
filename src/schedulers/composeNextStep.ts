@@ -67,6 +67,8 @@ export async function composeNextStepNudge(mission: Mission, tone: Tone = 'compe
     return await generateText(buildNextStepPrompt(mission, tone), {
       model: fastModel(),
       maxOutputTokens: 320,
+      // Flash is a thinking model — disable thinking so the full short nudge fits.
+      thinkingBudget: 0,
     });
   } catch (err) {
     console.warn(`[NextStep] Gemini unavailable (${(err as Error).message}) — using fallback`);

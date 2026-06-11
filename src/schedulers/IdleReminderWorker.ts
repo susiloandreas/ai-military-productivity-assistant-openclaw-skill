@@ -49,13 +49,15 @@ async function check(): Promise<void> {
     return;
   }
 
-  // A mission awaiting a "what did you do?" reply (e.g. after ETA expiry) is an
-  // open follow-up the user still owes us. Stay silent rather than stacking an
-  // idle nudge on top of that prompt — we're already following up.
+  // An ETA-expired mission awaiting a reply is an OPEN follow-up the user owes us,
+  // and the 5-min ETA loop is already re-asking — stay silent so we don't stack an
+  // idle nudge on top. A *completed* mission's "what did you do?" prompt is only
+  // optional notes, so it must NOT mute nudges: left unanswered it would otherwise
+  // silence the idle/habit coach indefinitely.
   const awaitingNotes = await missionRepo.getAwaitingNotes(DEFAULT_USER_ID);
-  if (awaitingNotes) {
+  if (awaitingNotes?.status === 'eta_expired') {
     console.log(
-      `[Idle Reminder] ${now.toISOString()} — awaiting notes for "${awaitingNotes.title}" (${awaitingNotes.status}), skipping nudge`
+      `[Idle Reminder] ${now.toISOString()} — awaiting ETA resolution for "${awaitingNotes.title}", skipping nudge`
     );
     return;
   }

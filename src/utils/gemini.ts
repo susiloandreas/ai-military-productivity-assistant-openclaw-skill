@@ -23,6 +23,14 @@ export interface GeminiOptions {
   timeoutMs?: number;
   /** Extra attempts after the first. Default GEMINI_RETRIES env, else 2. */
   retries?: number;
+  /**
+   * Reasoning-token budget for Gemini 2.5 "thinking" models. These models bill
+   * internal reasoning against `maxOutputTokens`, so a tight cap can leave almost
+   * no room for the visible reply (it comes back truncated). Set 0 to disable
+   * thinking for short, latency-sensitive messages (Flash supports 0; Pro does
+   * not — leave undefined there). Omitted → the model's default thinking.
+   */
+  thinkingBudget?: number;
 }
 
 /** HTTP statuses worth retrying — transient/overload conditions. */
@@ -93,6 +101,11 @@ function requestOnce(prompt: string, key: string, model: string, opts: GeminiOpt
         // Generous cap so the model has room to elaborate; the prompt's sentence
         // guidance still controls the actual message length.
         maxOutputTokens: opts.maxOutputTokens ?? 800,
+        // Without this, a 2.5 thinking model spends most of maxOutputTokens on
+        // reasoning and the visible reply is truncated to a curt fragment.
+        ...(opts.thinkingBudget != null
+          ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } }
+          : {}),
       },
     });
 

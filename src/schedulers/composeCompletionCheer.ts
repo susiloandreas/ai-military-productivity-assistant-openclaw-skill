@@ -114,6 +114,8 @@ export async function composeCompletionCheer(result: MissionCompleteResult, stre
     return await generateText(buildCompletionPrompt(result, streakCount), {
       model: fastModel(),
       maxOutputTokens: 320,
+      // Flash is a thinking model — disable thinking so the full short cheer fits.
+      thinkingBudget: 0,
     });
   } catch (err) {
     console.warn(`[Completion] Gemini unavailable (${(err as Error).message}) — using fallback`);

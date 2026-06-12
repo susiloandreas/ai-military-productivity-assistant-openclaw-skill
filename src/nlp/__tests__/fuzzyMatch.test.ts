@@ -14,15 +14,22 @@ describe('normalizeToken', () => {
 });
 
 describe('editDistance', () => {
-  it('computes classic Levenshtein costs', () => {
+  it('charges full cost for consonant edits', () => {
     expect(editDistance('selesai', 'selesai')).toBe(0);
-    expect(editDistance('slesai', 'selesai')).toBe(1);
-    expect(editDistance('kitten', 'sitting')).toBe(3);
+    expect(editDistance('kelar', 'kear')).toBe(1); // dropped consonant
+    expect(editDistance('kitten', 'sitting')).toBe(2.625); // 2 consonant subs + vowel sub
   });
 
-  it('counts an adjacent transposition as one edit (OSA)', () => {
-    expect(editDistance('doen', 'done')).toBe(1);
-    expect(editDistance('doen', 'done', false)).toBe(2);
+  it('discounts vowel edits (colloquial vowel drift)', () => {
+    expect(editDistance('belom', 'belum')).toBe(0.625); // vowel substitution
+    expect(editDistance('slesai', 'selesai')).toBe(0.375); // dropped vowel
+    expect(editDistance('blom', 'belum')).toBe(1); // dropped vowel + vowel sub
+    expect(editDistance('mule', 'mulai')).toBe(1); // vowel sub + missing vowel
+    expect(editDistance('betul', 'batal')).toBe(1.25); // two vowel subs — over budget
+  });
+
+  it('counts an adjacent consonant transposition as one edit (OSA)', () => {
+    expect(editDistance('tsop', 'stop')).toBe(1);
   });
 });
 
@@ -32,13 +39,25 @@ describe('tokenDistance', () => {
   });
 
   it('tolerates 1 edit on 5–7 char words and 2 on 8+', () => {
-    expect(tokenDistance('slesai', 'selesai')).toBe(1);
-    expect(tokenDistance('finishd', 'finished')).toBe(1);
-    expect(tokenDistance('selsai', 'selesai')).toBe(1);
+    expect(tokenDistance('slesai', 'selesai')).toBe(0.375);
+    expect(tokenDistance('finishd', 'finished')).toBe(0.375);
+    expect(tokenDistance('selsai', 'selesai')).toBe(0.375);
+  });
+
+  it('matches colloquial vowel-shift spellings', () => {
+    expect(tokenDistance('mule', 'mulai')).toBe(1);
+    expect(tokenDistance('belom', 'belum')).toBe(0.625);
+    expect(tokenDistance('blom', 'belum')).toBe(1);
+  });
+
+  it('keeps genuinely different words apart despite the vowel discount', () => {
+    expect(tokenDistance('betul', 'batal')).toBeNull();
+    expect(tokenDistance('tidur', 'tidak')).toBeNull();
+    expect(tokenDistance('masi', 'misi')).toBeNull();
   });
 
   it('only tolerates a transposition on 4-char words', () => {
-    expect(tokenDistance('doen', 'done')).toBe(1);
+    expect(tokenDistance('doen', 'done')).toBe(0.75); // matched via swap, scored by weight
     expect(tokenDistance('miss', 'misi')).toBeNull(); // substitution — rejected
   });
 
@@ -48,7 +67,7 @@ describe('tokenDistance', () => {
   });
 
   it('matches a truncated typo against the candidate prefix ("selse" → "selesai")', () => {
-    expect(tokenDistance('selse', 'selesai')).toBe(1.5); // "seles" + prefix penalty
+    expect(tokenDistance('selse', 'selesai')).toBe(1.25); // "seles" + prefix penalty
     expect(tokenDistance('seles', 'selesai')).toBe(0.5);
   });
 

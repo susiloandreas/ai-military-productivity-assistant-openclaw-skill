@@ -11,6 +11,10 @@
  *   - candidate 4 chars    → adjacent transposition only ("doen" → "done",
  *                            but NOT "miss" → "misi")
  *   - candidate ≤ 3 chars  → exact only
+ *   - vowel edits cost less than consonant errors, so Indonesian colloquial
+ *     vowel shifts fit the 1-edit budget — "mule" → "mulai", "belom"/"blom"
+ *     → "belum" — while two full vowel substitutions still miss ("betul" is
+ *     not "batal")
  *   - truncated typing     → a token ≥ 4 chars covering ≥ 60% of a longer
  *                            candidate is matched against the candidate's
  *                            prefix ("selse" → "seles|ai"), ranked slightly
@@ -42,24 +46,40 @@ export function normalizeToken(s: string): string {
     .replace(/([a-z])\1{2,}/g, '$1');
 }
 
+// Edit weights. Vowel-only differences are how Indonesian colloquial spelling
+// drifts ("belum" → "belom"/"blom", "mulai" → "mule"), so a vowel edit costs a
+// fraction of a consonant error: one vowel shift — even a dropped vowel plus a
+// substituted one — fits a 1-edit budget (0.375 + 0.625), while two full vowel
+// substitutions ("betul" vs "batal", 1.25) do not. Eighths keep the sums exact
+// in floating point.
+const VOWEL_SUB = 0.625;
+const VOWEL_INDEL = 0.375;
+const isVowel = (ch: string) => 'aeiou'.includes(ch);
+const indelCost = (ch: string) => (isVowel(ch) ? VOWEL_INDEL : 1);
+
 /**
- * Optimal-string-alignment distance: Levenshtein + adjacent transposition
- * counted as one edit. With `allowTransposition` false it is plain Levenshtein.
+ * Weighted optimal-string-alignment distance: Levenshtein + adjacent
+ * transposition counted as one edit, with vowel substitutions and
+ * insertions/deletions discounted (see weights above).
  */
-export function editDistance(a: string, b: string, allowTransposition = true): number {
+export function editDistance(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
-  if (m === 0) return n;
-  if (n === 0) return m;
 
   let prev2: number[] = [];
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let prev: number[] = [0];
+  for (let j = 1; j <= n; j++) prev.push(prev[j - 1] + indelCost(b[j - 1]));
   for (let i = 1; i <= m; i++) {
-    const cur = [i];
+    const cur = [prev[0] + indelCost(a[i - 1])];
     for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let d = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
-      if (allowTransposition && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+      const subCost =
+        a[i - 1] === b[j - 1] ? 0 : isVowel(a[i - 1]) && isVowel(b[j - 1]) ? VOWEL_SUB : 1;
+      let d = Math.min(
+        prev[j] + indelCost(a[i - 1]),
+        cur[j - 1] + indelCost(b[j - 1]),
+        prev[j - 1] + subCost,
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
         d = Math.min(d, prev2[j - 2] + 1);
       }
       cur.push(d);
@@ -68,6 +88,19 @@ export function editDistance(a: string, b: string, allowTransposition = true): n
     prev = cur;
   }
   return prev[n];
+}
+
+/** Whether `a` is `b` with exactly one adjacent pair swapped ("doen" → "done"). */
+function isAdjacentTransposition(a: string, b: string): boolean {
+  if (a.length !== b.length || a === b) return false;
+  for (let i = 0; i < a.length - 1; i++) {
+    if (a[i] !== b[i]) {
+      return (
+        a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2)
+      );
+    }
+  }
+  return false;
 }
 
 /** Edits tolerated for a candidate word of `len` chars (see module doc). */
@@ -83,9 +116,7 @@ function fuzzyWordMatch(token: string, word: string): boolean {
   const limit = maxEditsFor(word.length);
   if (limit > 0) return editDistance(token, word) <= limit;
   // 4-char words tolerate a transposition only ("doen"→"done"); shorter are exact.
-  return (
-    word.length === 4 && editDistance(token, word) === 1 && editDistance(token, word, false) === 2
-  );
+  return word.length === 4 && isAdjacentTransposition(token, word);
 }
 
 /**
@@ -94,13 +125,16 @@ function fuzzyWordMatch(token: string, word: string): boolean {
  */
 export function tokenDistance(token: string, word: string): number | null {
   if (token === word) return 0;
-  if (fuzzyWordMatch(token, word)) return editDistance(token, word);
+  let best = fuzzyWordMatch(token, word) ? editDistance(token, word) : null;
   // Truncated typing: match against the candidate's same-length prefix.
   if (token.length >= 4 && token.length < word.length && token.length / word.length >= 0.6) {
     const prefix = word.slice(0, token.length);
-    if (fuzzyWordMatch(token, prefix)) return editDistance(token, prefix) + 0.5;
+    if (fuzzyWordMatch(token, prefix)) {
+      const viaPrefix = editDistance(token, prefix) + 0.5;
+      if (best === null || viaPrefix < best) best = viaPrefix;
+    }
   }
-  return null;
+  return best;
 }
 
 /** Split into whitespace tokens, keeping each raw token's end offset. */

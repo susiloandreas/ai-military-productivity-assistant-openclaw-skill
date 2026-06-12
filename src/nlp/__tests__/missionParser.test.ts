@@ -226,6 +226,15 @@ describe('parseIntent', () => {
   it('keeps short words strict — "miss you" is not "misi"', () => {
     expect(parseIntent('miss you')).toBeNull();
   });
+
+  it('matches colloquial vowel-shift spellings ("mule" → "mulai")', () => {
+    expect(parseIntent('mule coding 1h')).toEqual({
+      kind: 'start',
+      title: 'coding',
+      etaStr: '1h',
+      categoryName: null,
+    });
+  });
 });
 
 describe('parseExpiryStatusReply', () => {
@@ -271,6 +280,24 @@ describe('parseExpiryStatusReply', () => {
     expect(parseExpiryStatusReply('belom selesai, kehabisan waktu')).toEqual({
       status: 'failed',
       notes: 'kehabisan waktu',
+    });
+  });
+
+  it('matches colloquial "belum" spellings (belom / blom)', () => {
+    expect(parseExpiryStatusReply('belom, masih setengah jalan')).toEqual({
+      status: 'failed',
+      notes: 'masih setengah jalan',
+    });
+    expect(parseExpiryStatusReply('blom selesai, kehabisan waktu')).toEqual({
+      status: 'failed',
+      notes: 'kehabisan waktu',
+    });
+  });
+
+  it('does not mistake "betul" for "batal" despite the vowel tolerance', () => {
+    expect(parseExpiryStatusReply('betul, mantap')).toEqual({
+      status: null,
+      notes: 'betul, mantap',
     });
   });
 });

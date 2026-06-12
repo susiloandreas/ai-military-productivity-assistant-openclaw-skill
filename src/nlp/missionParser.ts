@@ -4,6 +4,10 @@
  * extracts its slots from keyword triggers and duration/category patterns, not a
  * language model.
  *
+ * Trigger words are typo-tolerant: tokens are normalized and matched against
+ * the closest known keyword by edit distance (see fuzzyMatch.ts), so "selse",
+ * "slesai" or "doneee" still resolve to "selesai" / "done".
+ *
  * Intents understood:
  *   start    — "start coding for 2h", "mulai latihan tenis 1 jam #tennis",
  *              "50 menit ke depan akan pulang", "/mission start review PR"
@@ -14,6 +18,8 @@
  *
  * Returns null when the message matches no intent — the listener stays silent.
  */
+
+import { closestPhrase } from './fuzzyMatch';
 
 export interface ParsedMission {
   title: string;
@@ -230,8 +236,19 @@ function stripTrailingPunct(s: string): string {
   return s.replace(/[\s?.!,]+$/, '');
 }
 
-function matchTrigger(lower: string, triggers: string[]): string | null {
-  return triggers.find(t => lower === t || lower.startsWith(t + ' ')) ?? null;
+/**
+ * Closest trigger phrase at the start of the message (typo-tolerant). Returns
+ * the chars consumed in the original text so callers can slice the remainder —
+ * with a fuzzy match that differs from the trigger's own length.
+ */
+function matchTrigger(lower: string, triggers: string[]): { phrase: string; consumed: number } | null {
+  const m = closestPhrase(lower, triggers);
+  return m ? { phrase: m.phrase, consumed: m.consumed } : null;
+}
+
+/** Whole-message phrase match: exact set hit first, then the closest typo. */
+function matchPhraseSet(lower: string, phrases: Set<string>): boolean {
+  return phrases.has(lower) || closestPhrase(lower, phrases, { whole: true }) !== null;
 }
 
 /** Whatever remains after a trigger + duration is removed, with glue stripped. */
@@ -259,7 +276,7 @@ export function parseMissionMessage(raw: string): ParsedMission | null {
 
   const strong = matchTrigger(lower, STRONG_START_TRIGGERS);
   if (strong) {
-    body = text.slice(strong.length).replace(/^[\s:,\-–]+/, '').replace(LEADING_CONNECTOR, '').trim();
+    body = text.slice(strong.consumed).replace(/^[\s:,\-–]+/, '').replace(LEADING_CONNECTOR, '').trim();
   } else {
     const future = text.match(FUTURE_LEADING_RE);
     if (future) {
@@ -269,7 +286,7 @@ export function parseMissionMessage(raw: string): ParsedMission | null {
       const softTrigger = matchTrigger(lower, SOFT_START_TRIGGERS);
       if (softTrigger) {
         soft = true;
-        body = text.slice(softTrigger.length).replace(/^[\s:,\-–]+/, '').trim();
+        body = text.slice(softTrigger.consumed).replace(/^[\s:,\-–]+/, '').trim();
       }
     }
   }
@@ -306,17 +323,17 @@ export function parseIntent(raw: string): ParsedIntent | null {
   const lower = stripTrailingPunct(text.toLowerCase());
 
   // Status — whole-message match only (avoids swallowing "misi coding 1h").
-  if (STATUS_PHRASES.has(lower)) return { kind: 'status' };
+  if (matchPhraseSet(lower, STATUS_PHRASES)) return { kind: 'status' };
 
   // Help and today's-habits queries — whole-message matches.
-  if (HELP_PHRASES.has(lower)) return { kind: 'help' };
-  if (HABITS_PHRASES.has(lower)) return { kind: 'habits' };
-  if (BRIEF_PHRASES.has(lower)) return { kind: 'brief' };
+  if (matchPhraseSet(lower, HELP_PHRASES)) return { kind: 'help' };
+  if (matchPhraseSet(lower, HABITS_PHRASES)) return { kind: 'habits' };
+  if (matchPhraseSet(lower, BRIEF_PHRASES)) return { kind: 'brief' };
 
   // Complete — a confirmation with nothing left over but an optional duration.
   const completeTrigger = matchTrigger(lower, COMPLETE_TRIGGERS);
   if (completeTrigger) {
-    const remainder = stripTrailingPunct(text).slice(completeTrigger.length);
+    const remainder = stripTrailingPunct(text).slice(completeTrigger.consumed);
     const { etaStr, rest } = extractDuration(remainder);
     if (leftoverTitle(rest) === '') return { kind: 'complete', actualStr: etaStr };
   }
@@ -325,14 +342,14 @@ export function parseIntent(raw: string): ParsedIntent | null {
   // fragment), e.g. "batalkan misi baca paper" → target "baca paper".
   const abortTrigger = matchTrigger(lower, ABORT_TRIGGERS);
   if (abortTrigger) {
-    const target = leftoverTitle(text.slice(abortTrigger.length)) || null;
+    const target = leftoverTitle(text.slice(abortTrigger.consumed)) || null;
     return { kind: 'abort', target };
   }
 
   // Extend — pull whatever duration follows the trigger (may be null).
   const extendTrigger = matchTrigger(lower, EXTEND_TRIGGERS);
   if (extendTrigger) {
-    const { etaStr } = extractDuration(text.slice(extendTrigger.length));
+    const { etaStr } = extractDuration(text.slice(extendTrigger.consumed));
     return { kind: 'extend', extendStr: etaStr };
   }
 
@@ -349,7 +366,6 @@ export function parseIntent(raw: string): ParsedIntent | null {
 
 // Not-completed checked first so "belum selesai" wins over "selesai".
 const NOT_DONE_TOKENS = [
-  '❌',
   'belum selesai',
   'tidak selesai',
   'belum',
@@ -366,7 +382,6 @@ const NOT_DONE_TOKENS = [
   'batal',
 ];
 const DONE_TOKENS = [
-  '✅',
   'sudah selesai',
   'udah selesai',
   'selesai',
@@ -393,35 +408,22 @@ export interface ExpiryReply {
   notes: string;
 }
 
-/** Strip a leading status token; returns the remainder, or null if no match. */
-function stripStatusToken(text: string, token: string): string | null {
-  const lower = text.toLowerCase();
-  if (token === '✅' || token === '❌') {
-    return text.startsWith(token) ? text.slice(token.length) : null;
-  }
-  if (lower === token) return '';
-  if (lower.startsWith(token)) {
-    const rest = text.slice(token.length);
-    if (rest === '' || /^[\s,.:;\-–]/.test(rest)) return rest;
-  }
-  return null;
-}
-
 /**
  * Parse the user's reply to an ETA-expiry prompt into a status decision + notes.
- * Not-completed markers take precedence over completed ones.
+ * Not-completed markers take precedence over completed ones. Word markers are
+ * typo-tolerant ("selse, fixed it" → completed), emoji markers are exact.
  */
 export function parseExpiryStatusReply(raw: string): ExpiryReply {
   const text = (raw ?? '').trim();
   const clean = (s: string) => s.replace(/^[\s,.:;\-–]+/, '').trim();
 
-  for (const t of NOT_DONE_TOKENS) {
-    const rest = stripStatusToken(text, t);
-    if (rest !== null) return { status: 'failed', notes: clean(rest) };
-  }
-  for (const t of DONE_TOKENS) {
-    const rest = stripStatusToken(text, t);
-    if (rest !== null) return { status: 'completed', notes: clean(rest) };
-  }
+  if (text.startsWith('❌')) return { status: 'failed', notes: clean(text.slice(1)) };
+  if (text.startsWith('✅')) return { status: 'completed', notes: clean(text.slice(1)) };
+
+  const lower = text.toLowerCase();
+  const notDone = closestPhrase(lower, NOT_DONE_TOKENS);
+  if (notDone) return { status: 'failed', notes: clean(text.slice(notDone.consumed)) };
+  const done = closestPhrase(lower, DONE_TOKENS);
+  if (done) return { status: 'completed', notes: clean(text.slice(done.consumed)) };
   return { status: null, notes: text };
 }

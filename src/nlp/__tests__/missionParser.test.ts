@@ -200,6 +200,32 @@ describe('parseIntent', () => {
   it('returns null for unrelated chatter', () => {
     expect(parseIntent('how is the weather today')).toBeNull();
   });
+
+  it('matches typo\'d completion triggers ("selse" → "selesai")', () => {
+    expect(parseIntent('selse')).toEqual({ kind: 'complete', actualStr: null });
+    expect(parseIntent('slesai 45 menit')).toEqual({ kind: 'complete', actualStr: '45m' });
+    expect(parseIntent('doneee')).toEqual({ kind: 'complete', actualStr: null });
+  });
+
+  it('matches typo\'d abort / extend / start triggers', () => {
+    expect(parseIntent('btalkan')).toEqual({ kind: 'abort', target: null });
+    expect(parseIntent('perpnjang 30 menit')).toEqual({ kind: 'extend', extendStr: '30m' });
+    expect(parseIntent('mulia coding 1h')).toEqual({
+      kind: 'start',
+      title: 'coding',
+      etaStr: '1h',
+      categoryName: null,
+    });
+  });
+
+  it('matches typo\'d whole-message queries', () => {
+    expect(parseIntent('statsu')).toEqual({ kind: 'status' });
+    expect(parseIntent('kebiasan')).toEqual({ kind: 'habits' });
+  });
+
+  it('keeps short words strict — "miss you" is not "misi"', () => {
+    expect(parseIntent('miss you')).toBeNull();
+  });
 });
 
 describe('parseExpiryStatusReply', () => {
@@ -235,5 +261,16 @@ describe('parseExpiryStatusReply', () => {
       notes: 'fixed the parser',
     });
     expect(parseExpiryStatusReply('selesai')).toEqual({ status: 'completed', notes: '' });
+  });
+
+  it('tolerates typos in the status token', () => {
+    expect(parseExpiryStatusReply('selse, fixed the parser')).toEqual({
+      status: 'completed',
+      notes: 'fixed the parser',
+    });
+    expect(parseExpiryStatusReply('belom selesai, kehabisan waktu')).toEqual({
+      status: 'failed',
+      notes: 'kehabisan waktu',
+    });
   });
 });

@@ -132,13 +132,22 @@ function requestOnce(prompt: string, key: string, model: string, opts: GeminiOpt
         }
         try {
           const json = JSON.parse(data);
-          const text: string | undefined = json?.candidates?.[0]?.content?.parts
+          const candidate = json?.candidates?.[0];
+          const text: string | undefined = candidate?.content?.parts
             ?.map((p: { text?: string }) => p.text ?? '')
             .join('')
             .trim();
           if (!text) {
             // Empty completion isn't worth retrying — same prompt → same result.
-            reject(new GeminiError(`Gemini returned no text: ${data.slice(0, 200)}`, false));
+            // finishReason makes the cause visible in logs (MAX_TOKENS here means
+            // the thinking budget ate the cap before any visible text was written).
+            const reason = candidate?.finishReason ?? 'unknown';
+            reject(
+              new GeminiError(
+                `Gemini returned no text (finishReason: ${reason}): ${data.slice(0, 200)}`,
+                false
+              )
+            );
             return;
           }
           resolve(text);

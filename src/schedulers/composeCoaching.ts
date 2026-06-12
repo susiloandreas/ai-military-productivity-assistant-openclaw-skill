@@ -79,7 +79,15 @@ export async function composeCoaching(
   });
 
   try {
-    return await generateText(buildCoachingPrompt(ctx));
+    // The brief runs on the strong (Pro) thinking model, whose reasoning tokens
+    // bill against maxOutputTokens — with the tight default cap it hits
+    // MAX_TOKENS while still thinking and returns no visible text, so every
+    // brief fell back to the static message. Pro can't disable thinking
+    // (Flash-only), but a bounded budget leaves guaranteed room for the reply.
+    return await generateText(buildCoachingPrompt(ctx), {
+      maxOutputTokens: 4096,
+      thinkingBudget: 1024,
+    });
   } catch (err) {
     console.warn(`[Coaching] Gemini unavailable (${(err as Error).message}) — using fallback`);
     return fallbackCoaching(ctx);

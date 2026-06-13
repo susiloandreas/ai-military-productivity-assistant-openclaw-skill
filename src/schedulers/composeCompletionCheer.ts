@@ -32,6 +32,38 @@ const TIER_LABEL: Record<number, string> = {
   30: 'sebulan beruntun — elite',
 };
 
+/**
+ * Healthy upper bounds (minutes) for recognizable activities, keyed by a keyword
+ * in the mission title. Blowing past the bound isn't a win to cheer — it's a
+ * habit to review (15h of "tidur" is oversleeping, not hard work). First match wins.
+ */
+const HEALTHY_MAX: { match: RegExp; maxMinutes: number; label: string }[] = [
+  { match: /tidur|sleep/, maxMinutes: 10 * 60, label: 'tidur terlalu lama' },
+];
+
+/** Any single mission past this is almost certainly a timer left running. */
+const FORGOTTEN_TIMER_MINUTES = 16 * 60;
+
+/**
+ * Inspect the just-completed mission for an unhealthily long duration. Returns a
+ * short Indonesian concern when the activity overran a sane bound, else null —
+ * the signal that flips the cheer from pure celebration into an honest review.
+ */
+export function durationConcern(result: MissionCompleteResult): string | null {
+  const mins = result.mission.actual_duration_minutes;
+  if (mins == null) return null;
+  const title = result.mission.title.toLowerCase();
+  for (const rule of HEALTHY_MAX) {
+    if (rule.match.test(title) && mins > rule.maxMinutes) {
+      return `durasi ${formatMinutes(mins)} jauh di atas batas sehat (${formatMinutes(rule.maxMinutes)}) untuk aktivitas ini — ${rule.label}`;
+    }
+  }
+  if (mins > FORGOTTEN_TIMER_MINUTES) {
+    return `durasi ${formatMinutes(mins)} tidak wajar untuk satu sesi — kemungkinan timer lupa dimatikan`;
+  }
+  return null;
+}
+
 /** One-line snapshot of what was just accomplished, shared by prompt + fallback. */
 function achievement(result: MissionCompleteResult): string {
   const { mission, goalProgress } = result;
@@ -59,6 +91,35 @@ export function buildCompletionPrompt(result: MissionCompleteResult, streakCount
     streakCount > 0
       ? `STREAK SAAT INI: ${streakCount} hari beruntun (tingkat perayaan: ${tier} — ${TIER_LABEL[tier]}).`
       : `STREAK: belum ada rantai berjalan — ini bisa jadi awalnya.`;
+  const concern = durationConcern(result);
+
+  // When the duration is unhealthy, the cheer becomes an honest habit review:
+  // acknowledge the completion, but DON'T celebrate the overrun as hard work.
+  if (concern) {
+    return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
+Sebuah misi baru saja DITUTUP sebagai SELESAI, TAPI durasinya bermasalah.
+
+MISI SELESAI: ${achievement(result)}
+${streakLine}
+⚠️ TINJAUAN KEBIASAAN: ${concern}.
+
+Tugasmu: tulis SATU pesan SINGKAT dalam Bahasa Indonesia yang MENINJAU kebiasaan ini dengan jujur, bukan merayakannya.
+
+FOKUS UTAMA: KOREKSI YANG SUPORTIF.
+- Akui dia menyelesaikan misinya, tapi TEGASKAN durasi sepanjang ini BUKAN kerja keras yang patut dirayakan — ini sinyal untuk dikoreksi.
+- Jangan menghakimi atau merendahkan; bingkai sebagai pelatih yang peduli pada kesehatan & disiplinnya.
+
+ATURAN WAJIB:
+- Maksimal 3 kalimat. Tegas, jujur, peduli, tanpa basa-basi.
+- JANGAN memuji durasinya atau menyebutnya "kerja keras"/"hebat". Sebut angka durasinya dan kenapa itu terlalu panjang.
+- JANGAN merayakan streak di pesan ini; fokus pada koreksi.
+- Acu misi yang baru selesai secara spesifik; jangan mengarang detail lain.
+- Boleh 1 emoji dan tag <b></b> (format Telegram HTML). Jangan pakai markdown.
+- Akhiri dengan satu target durasi yang SEHAT dan konkret untuk sesi berikutnya.
+
+Tulis pesannya sekarang.`;
+  }
+
   return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
 Sebuah misi baru saja DITUTUP sebagai SELESAI (berhasil).
 
@@ -96,6 +157,18 @@ function streakBanner(streakCount: number): string {
  */
 export function fallbackCompletion(result: MissionCompleteResult, streakCount = 0): string {
   const { mission, goalProgress } = result;
+
+  // Unhealthy duration → review, not celebration (no streak banner either).
+  const concern = durationConcern(result);
+  if (concern) {
+    return (
+      `🎖️ <b>MISI SELESAI</b> — tapi mari ditinjau dulu.\n\n` +
+      `<b>${mission.title}</b> tercatat selesai, namun ${concern}. ` +
+      `Menyelesaikannya bagus, tapi durasi seperti ini bukan kerja keras yang patut dirayakan — ini sinyal untuk dikoreksi.\n\n` +
+      `<b>LANJUT:</b> Patok durasi yang sehat untuk sesi berikutnya dan jaga rantai disiplin tetap terukur.`
+    );
+  }
+
   const win = goalProgress?.goalCompleted
     ? `🏆 <b>GOAL TUNTAS — "${goalProgress.goal.title}"!</b>`
     : `🎖️ <b>MISI SELESAI — SATU KEMENANGAN LAGI</b>`;

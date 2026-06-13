@@ -1,4 +1,9 @@
-import { buildCompletionPrompt, fallbackCompletion, rewardTier } from '../composeCompletionCheer';
+import {
+  buildCompletionPrompt,
+  fallbackCompletion,
+  rewardTier,
+  durationConcern,
+} from '../composeCompletionCheer';
 import { MissionCompleteResult } from '../../services/MissionService';
 import { ProgressResult } from '../../services/GoalService';
 import { Mission, Goal } from '../../types';
@@ -65,6 +70,44 @@ describe('composeCompletionCheer', () => {
     const out = fallbackCompletion(result({ goalProgress: goalProgress({ goalCompleted: true }) }));
     expect(out).toContain('GOAL TUNTAS');
     expect(out).toContain('Kuasai TypeScript');
+  });
+});
+
+describe('composeCompletionCheer — habit review on unhealthy duration', () => {
+  const longSleep = () =>
+    result({ mission: mission({ title: 'tidur', actual_duration_minutes: 15 * 60 + 11 }) });
+
+  it('flags an over-long sleep as a concern', () => {
+    expect(durationConcern(longSleep())).toMatch(/tidur terlalu lama/);
+  });
+
+  it('does not flag a healthy sleep', () => {
+    const ok = result({ mission: mission({ title: 'tidur', actual_duration_minutes: 8 * 60 }) });
+    expect(durationConcern(ok)).toBeNull();
+  });
+
+  it('flags an absurdly long generic session as a forgotten timer', () => {
+    const marathon = result({ mission: mission({ title: 'baca buku', actual_duration_minutes: 17 * 60 }) });
+    expect(durationConcern(marathon)).toMatch(/timer lupa/);
+  });
+
+  it('does not flag missions with no recorded duration', () => {
+    expect(durationConcern(result({ mission: mission({ actual_duration_minutes: null }) }))).toBeNull();
+  });
+
+  it('switches the prompt to an honest review, not celebration', () => {
+    const prompt = buildCompletionPrompt(longSleep(), 4);
+    expect(prompt).toContain('TINJAUAN KEBIASAAN');
+    expect(prompt).toContain('KOREKSI YANG SUPORTIF');
+    expect(prompt).toMatch(/JANGAN memuji/);
+    expect(prompt).not.toContain('PENGUATAN POSITIF');
+  });
+
+  it('reviews instead of cheering in the fallback, with no streak banner', () => {
+    const out = fallbackCompletion(longSleep(), 7);
+    expect(out).toContain('ditinjau');
+    expect(out).toContain('dikoreksi');
+    expect(out).not.toContain('STREAK 7 HARI');
   });
 });
 

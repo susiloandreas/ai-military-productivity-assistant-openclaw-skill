@@ -31,7 +31,7 @@ export interface ParsedMission {
 
 export type ParsedIntent =
   | ({ kind: 'start' } & ParsedMission)
-  | { kind: 'complete'; actualStr: string | null }
+  | { kind: 'complete'; actualStr: string | null; notes: string | null }
   | { kind: 'abort'; target: string | null }
   | { kind: 'extend'; extendStr: string | null }
   | { kind: 'status' }
@@ -330,12 +330,24 @@ export function parseIntent(raw: string): ParsedIntent | null {
   if (matchPhraseSet(lower, HABITS_PHRASES)) return { kind: 'habits' };
   if (matchPhraseSet(lower, BRIEF_PHRASES)) return { kind: 'brief' };
 
-  // Complete — a confirmation with nothing left over but an optional duration.
+  // Complete — a confirmation, optionally followed by an actual duration and/or
+  // inline notes set off by a delimiter, matching the "selesai, <notes>" report
+  // format the bot itself teaches ("done: fixed parser", "selesai - tidur").
   const completeTrigger = matchTrigger(lower, COMPLETE_TRIGGERS);
   if (completeTrigger) {
-    const remainder = stripTrailingPunct(text).slice(completeTrigger.consumed);
+    const clean = stripTrailingPunct(text);
+    const remainder = clean.slice(completeTrigger.consumed);
     const { etaStr, rest } = extractDuration(remainder);
-    if (leftoverTitle(rest) === '') return { kind: 'complete', actualStr: etaStr };
+    const leftover = leftoverTitle(rest);
+    if (leftover === '') return { kind: 'complete', actualStr: etaStr, notes: null };
+    // Trailing text counts as notes only when delimited (comma/colon/dash) — the
+    // "selesai, <notes>" report format. The delimiter may sit glued to the trigger
+    // ("selesai,"), where tokenizing already consumed it, or after the duration
+    // ("selesai 45 menit, ngoding"). A bare space means a phrase like "complete the
+    // auth refactor" — NOT a completion.
+    const delimited =
+      /[,:;\-–]$/.test(clean.slice(0, completeTrigger.consumed)) || /^\s*[,:;\-–]/.test(rest);
+    if (delimited) return { kind: 'complete', actualStr: etaStr, notes: leftover };
   }
 
   // Abort — keep any text after the trigger as the target mission (a title

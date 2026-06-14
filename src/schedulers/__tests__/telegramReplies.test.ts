@@ -97,6 +97,15 @@ describe('telegramReplies', () => {
     expect(out).toContain('notes'); // asks what the user did
   });
 
+  it('shows inline notes and skips the ask when notes were captured', () => {
+    const out = replyCompleted(
+      { mission: mission({ actual_duration_minutes: 90, notes: 'tidur' }), goalProgress: null },
+      firstRng
+    );
+    expect(out).toContain('📝 tidur');
+    expect(out).not.toContain('notes'); // already captured — no "what did you do?"
+  });
+
   it('asks for status + notes on ETA expiry and confirms when saved', () => {
     const expired = replyEtaExpiredAskNotes(mission({ title: 'Refactor', eta_minutes: 60 }), firstRng);
     expect(expired).toContain('ETA HABIS');

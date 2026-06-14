@@ -137,10 +137,16 @@ describe('parseIntent', () => {
   });
 
   it('classifies completion confirmations (EN + ID), with optional duration', () => {
-    expect(parseIntent('done')).toEqual({ kind: 'complete', actualStr: null });
-    expect(parseIntent('selesai')).toEqual({ kind: 'complete', actualStr: null });
-    expect(parseIntent('udah kelar 45 menit')).toEqual({ kind: 'complete', actualStr: '45m' });
-    expect(parseIntent('/mission complete')).toEqual({ kind: 'complete', actualStr: null });
+    expect(parseIntent('done')).toEqual({ kind: 'complete', actualStr: null, notes: null });
+    expect(parseIntent('selesai')).toEqual({ kind: 'complete', actualStr: null, notes: null });
+    expect(parseIntent('udah kelar 45 menit')).toEqual({ kind: 'complete', actualStr: '45m', notes: null });
+    expect(parseIntent('/mission complete')).toEqual({ kind: 'complete', actualStr: null, notes: null });
+  });
+
+  it('captures inline notes after a delimiter ("selesai, <notes>")', () => {
+    expect(parseIntent('selesai, tidur')).toEqual({ kind: 'complete', actualStr: null, notes: 'tidur' });
+    expect(parseIntent('done: fixed the parser')).toEqual({ kind: 'complete', actualStr: null, notes: 'fixed the parser' });
+    expect(parseIntent('selesai 45 menit, ngoding')).toEqual({ kind: 'complete', actualStr: '45m', notes: 'ngoding' });
   });
 
   it('does not treat "complete <title>" as a completion', () => {
@@ -202,9 +208,9 @@ describe('parseIntent', () => {
   });
 
   it('matches typo\'d completion triggers ("selse" → "selesai")', () => {
-    expect(parseIntent('selse')).toEqual({ kind: 'complete', actualStr: null });
-    expect(parseIntent('slesai 45 menit')).toEqual({ kind: 'complete', actualStr: '45m' });
-    expect(parseIntent('doneee')).toEqual({ kind: 'complete', actualStr: null });
+    expect(parseIntent('selse')).toEqual({ kind: 'complete', actualStr: null, notes: null });
+    expect(parseIntent('slesai 45 menit')).toEqual({ kind: 'complete', actualStr: '45m', notes: null });
+    expect(parseIntent('doneee')).toEqual({ kind: 'complete', actualStr: null, notes: null });
   });
 
   it('matches typo\'d abort / extend / start triggers', () => {

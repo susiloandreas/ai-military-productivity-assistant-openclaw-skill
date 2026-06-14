@@ -85,6 +85,7 @@ export function replyCompleted(
     lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
   }
   if (streakCount > 0) lines.push(`🔥 Streak: <b>${streakCount} hari beruntun</b>`);
+  if (mission.notes) lines.push(`📝 ${mission.notes}`);
   if (goalProgress) {
     if (goalProgress.goalCompleted) {
       lines.push(`🏆 GOAL TUNTAS: <b>${goalProgress.goal.title}</b>`);
@@ -93,10 +94,10 @@ export function replyCompleted(
     }
     lines.push(`📈 Progress goal: ${formatMinutes(goalProgress.totalProgress)}`);
   }
-  return (
-    `${pick(COMPLETED_HEADERS, rng)}\n\n${lines.join('\n')}\n\n` +
-    `${pick(COMPLETED_CLOSERS, rng)}\n\n${pick(ASK_NOTES, rng)}`
-  );
+  // Notes already captured inline ("selesai, <notes>") — confirm them instead of
+  // asking again. Otherwise prompt for "what did you do?".
+  const tail = mission.notes ? '' : `\n\n${pick(ASK_NOTES, rng)}`;
+  return `${pick(COMPLETED_HEADERS, rng)}\n\n${lines.join('\n')}\n\n${pick(COMPLETED_CLOSERS, rng)}${tail}`;
 }
 
 const ETA_EXPIRED_HEADERS = [

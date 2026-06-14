@@ -157,9 +157,10 @@ async function handleText(text: string): Promise<void> {
         break;
       }
       case 'complete': {
-        const result = await missionService.complete(DEFAULT_USER_ID, intent.actualStr, null);
-        // Ask what was done; the next free-text reply is captured into notes.
-        await missionService.requestNotes(result.mission.id);
+        const result = await missionService.complete(DEFAULT_USER_ID, intent.actualStr, intent.notes);
+        // Ask what was done only when no notes came inline ("selesai, <notes>");
+        // the next free-text reply is then captured into notes.
+        if (!intent.notes) await missionService.requestNotes(result.mission.id);
         const streak = await streakCountFor(result.mission);
         await sendTelegramMessage(replyCompleted(result, Math.random, streak));
         // Follow with an AI-generated motivational cheer that escalates with the streak.

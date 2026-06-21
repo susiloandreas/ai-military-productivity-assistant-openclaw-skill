@@ -7,11 +7,15 @@ import {
   buildGenericIdleMessage,
   buildHeldMissionReminder,
   findSeharusnyaHabit,
+  selectDueHabits,
+  replanLine,
 } from './idleReminderMessages';
 import { isNearCoachingSlot } from './coachingContext';
 import { replyEtaExpiredAskNotes } from './telegramReplies';
 import { NotificationRepository } from '../repositories/NotificationRepository';
 import { StreakRepository } from '../repositories/StreakRepository';
+import { PlanRepository } from '../repositories/PlanRepository';
+import { PlanService } from '../services/PlanService';
 import { consecutiveMisses } from '../services/streakMath';
 import { DEFAULT_USER_ID, Mission } from '../types';
 
@@ -26,6 +30,7 @@ const missionRepo = new MissionRepository();
 const habitRepo = new HabitRepository();
 const notificationRepo = new NotificationRepository();
 const streakRepo = new StreakRepository();
+const planService = new PlanService(new PlanRepository(), habitRepo);
 
 function startOfToday(now: Date): Date {
   const d = new Date(now);
@@ -91,25 +96,41 @@ async function check(): Promise<void> {
 
   // Idle: confront the user about scheduled habits they are losing today;
   // fall back to the generic prompt when nothing is due or missed.
-  const schedules = await habitRepo.getActiveSchedules(DEFAULT_USER_ID);
+  const rawSchedules = await habitRepo.getActiveSchedules(DEFAULT_USER_ID);
+  // Today's due/missed list comes from the day plan: a skipped block never nags, a
+  // moved block is judged at its new time, a done block drops out.
+  const { schedules: planSchedules, skipped } = await planService.getReminderSchedules(DEFAULT_USER_ID, now);
   const loggedTypeIds = new Set(
     await missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now))
   );
 
   // Consecutive missed scheduled days per habit-type → drives gentle-vs-escalate
-  // recovery framing ("never miss twice").
+  // recovery framing ("never miss twice"). Computed over the template.
   const streakRows = await streakRepo.getAll(DEFAULT_USER_ID);
   const rowByType = new Map(streakRows.filter(r => r.habit_type_id).map(r => [r.habit_type_id!, r]));
   const missCountByType = new Map<string, number>();
-  for (const s of schedules) {
+  for (const s of rawSchedules) {
     missCountByType.set(
       s.habit_type_id,
       consecutiveMisses(rowByType.get(s.habit_type_id) ?? null, s, now)
     );
   }
 
-  const lossAversion = buildHabitLossAversionMessage(schedules, loggedTypeIds, now, Math.random, missCountByType);
-  const message = lossAversion ?? buildGenericIdleMessage(findSeharusnyaHabit(schedules, loggedTypeIds, now));
+  const lossAversion = buildHabitLossAversionMessage(planSchedules, loggedTypeIds, now, Math.random, missCountByType);
+  // The generic "seharusnya" hint keeps the template (for cross-midnight context),
+  // but never points at something already logged or deliberately skipped today.
+  const excluded = new Set([...loggedTypeIds, ...skipped]);
+  let message: string;
+  if (lossAversion) {
+    // A missed habit gets a propose-&-confirm re-plan offer: the suggested "geser …"
+    // is only applied when the user sends it back; the plan is untouched until then.
+    const firstMissed = selectDueHabits(planSchedules, loggedTypeIds, now).find(d => d.status === 'missed');
+    message = firstMissed
+      ? `${lossAversion}\n\n${replanLine(firstMissed.schedule.habit_type_name, now)}`
+      : lossAversion;
+  } else {
+    message = buildGenericIdleMessage(findSeharusnyaHabit(rawSchedules, excluded, now));
+  }
 
   console.log(
     `[Idle Reminder] ${now.toISOString()} — no active mission, sending ` +

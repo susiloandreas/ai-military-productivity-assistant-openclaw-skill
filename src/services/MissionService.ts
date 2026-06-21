@@ -3,6 +3,7 @@ import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { GoalService, ProgressResult } from './GoalService';
 import { StreakService } from './StreakService';
+import { PlanService } from './PlanService';
 import { Mission } from '../types';
 import { parseDurationToMinutes } from '../utils/duration';
 import { Queue } from 'bullmq';
@@ -11,6 +12,13 @@ import { redisConnection } from '../db/connection';
 export interface MissionCompleteResult {
   mission: Mission;
   goalProgress: ProgressResult | null;
+  /**
+   * Planned length (minutes) of the matching daily-plan block, when one was
+   * matched at completion. Lets the completion cheer review actual-vs-plan; null
+   * when the mission isn't tied to a plan block (ad-hoc, or completed outside any
+   * block window).
+   */
+  plannedMinutes?: number | null;
 }
 
 export interface MissionStartResult {
@@ -52,7 +60,9 @@ export class MissionService {
     private goalService: GoalService,
     // Optional so existing callers/tests keep working; when present, completions
     // advance the user's habit + overall streaks.
-    private streakService?: StreakService
+    private streakService?: StreakService,
+    // Optional too; when present, a completion marks its matching day-plan block done.
+    private planService?: PlanService
   ) {
     this.etaQueue = new Queue('eta-expiry', { connection: redisConnection });
   }
@@ -64,6 +74,23 @@ export class MissionService {
       await this.streakService.recordCompletion(userId, habitTypeId);
     } catch (err) {
       console.warn(`[Streak] failed to record completion: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Mark the matching day-plan block done and return its planned duration in
+   * minutes (block duration, else the source schedule's window) so the cheer can
+   * review actual-vs-plan. Swallows errors so it never blocks the reply; returns
+   * null when there's no plan service, no block matched, or no planned length.
+   */
+  private async advancePlan(mission: Mission): Promise<number | null> {
+    if (!this.planService) return null;
+    try {
+      const block = await this.planService.markDoneForMission(mission);
+      return block ? await this.planService.plannedMinutesForBlock(block) : null;
+    } catch (err) {
+      console.warn(`[Plan] failed to mark block done: ${(err as Error).message}`);
+      return null;
     }
   }
 
@@ -130,7 +157,8 @@ export class MissionService {
 
     const { goalProgress } = await this.advanceGoals(mission, actualDuration);
     await this.advanceStreaks(userId, completed.habit_type_id);
-    return { mission: completed, goalProgress };
+    const plannedMinutes = await this.advancePlan(completed);
+    return { mission: completed, goalProgress, plannedMinutes };
   }
 
   /**
@@ -334,7 +362,8 @@ export class MissionService {
 
     const { goalProgress } = await this.advanceGoals(updated, elapsed);
     await this.advanceStreaks(mission.user_id, updated.habit_type_id);
-    return { mission: updated, goalProgress };
+    const plannedMinutes = await this.advancePlan(updated);
+    return { mission: updated, goalProgress, plannedMinutes };
   }
 
   async getRecentCompleted(userId: string, days = 7): Promise<Mission[]> {

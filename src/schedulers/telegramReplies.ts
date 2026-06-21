@@ -280,6 +280,7 @@ export function replyHelp(): string {
 ❌ <b>Batalkan</b> — <i>"batalkan misi"</i>
 📊 <b>Status misi</b> — <i>"status"</i>
 📋 <b>Kebiasaan hari ini</b> — <i>"kebiasaan"</i>
+🗓️ <b>Rencana hari ini</b> — <i>"/plan"</i> · ubah: <i>"geser lari ke jam 5 sore"</i>, <i>"skip meditasi"</i>, <i>"tunda 30 menit"</i>
 📨 <b>Pengarahan</b> — <i>"brief"</i>
 🆘 <b>Bantuan</b> — <i>"help"</i>
 

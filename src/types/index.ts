@@ -71,6 +71,30 @@ export interface HabitScheduleWithNames extends HabitSchedule {
   category_name: string;
 }
 
+// ── Plan Blocks (adaptive daily plan) ───────────────────────────────────────
+// A concrete, mutable time-block for one calendar day, materialized lazily from
+// habit_schedules ("today's orders" derived from the standing template). Edited
+// per day without changing the template. `proposed` is reserved for the later
+// AI propose-&-confirm phase; the MVP only ever writes planned/done/skipped/moved.
+export type PlanBlockStatus = 'planned' | 'done' | 'skipped' | 'moved' | 'proposed';
+export type PlanBlockHardness = 'hard' | 'soft';
+
+export interface PlanBlock {
+  id: string;
+  user_id: string;
+  plan_date: string;                 // 'YYYY-MM-DD' (pg DATE, read via to_char)
+  habit_type_id: string | null;      // NULL = one-off ad-hoc block
+  title: string;
+  start_time: string;                // 'HH:MM:SS' (pg TIME)
+  duration_minutes: number | null;   // NULL = unspecified length
+  hardness: PlanBlockHardness;
+  status: PlanBlockStatus;
+  source_schedule_id: string | null; // provenance; NULL = ad-hoc
+  completed_mission_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 // ── Goal Progress Logs ─────────────────────────────────────────────────────
 export interface GoalProgressLog {
   id: string;

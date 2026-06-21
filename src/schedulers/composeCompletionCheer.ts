@@ -45,11 +45,28 @@ const HEALTHY_MAX: { match: RegExp; maxMinutes: number; label: string }[] = [
 const FORGOTTEN_TIMER_MINUTES = 16 * 60;
 
 /**
+ * Actual duration past this multiple of the matching daily-plan block's planned
+ * length (`plan_blocks.duration_minutes` — the adaptive "today's orders" layer,
+ * which already reflects any moves/edits for the day) is a habit to review, not a
+ * win to cheer — a workout planned for 1h that ran 3h blew the plan, regardless
+ * of any absolute health cap. 2× keeps minor overruns (65m on a 60m block) from
+ * nagging.
+ */
+const PLAN_OVERRUN_FACTOR = 2;
+
+/**
  * Inspect the just-completed mission for an unhealthily long duration. Returns a
  * short Indonesian concern when the activity overran a sane bound, else null —
  * the signal that flips the cheer from pure celebration into an honest review.
+ *
+ * `plannedMinutes` is the matching daily-plan block's planned duration when
+ * known; running past {@link PLAN_OVERRUN_FACTOR}× it is reviewed against the
+ * plan, on top of the absolute health/timer caps below.
  */
-export function durationConcern(result: MissionCompleteResult): string | null {
+export function durationConcern(
+  result: MissionCompleteResult,
+  plannedMinutes?: number | null
+): string | null {
   const mins = result.mission.actual_duration_minutes;
   if (mins == null) return null;
   const title = result.mission.title.toLowerCase();
@@ -58,6 +75,9 @@ export function durationConcern(result: MissionCompleteResult): string | null {
       return `durasi ${formatMinutes(mins)} jauh di atas batas sehat (${formatMinutes(rule.maxMinutes)}) untuk aktivitas ini — ${rule.label}`;
     }
   }
+  if (plannedMinutes != null && plannedMinutes > 0 && mins >= plannedMinutes * PLAN_OVERRUN_FACTOR) {
+    return `durasi ${formatMinutes(mins)} lebih dari ${PLAN_OVERRUN_FACTOR}× rencana harian untuk blok ini (${formatMinutes(plannedMinutes)}) — jauh melampaui rencana`;
+  }
   if (mins > FORGOTTEN_TIMER_MINUTES) {
     return `durasi ${formatMinutes(mins)} tidak wajar untuk satu sesi — kemungkinan timer lupa dimatikan`;
   }
@@ -65,11 +85,15 @@ export function durationConcern(result: MissionCompleteResult): string | null {
 }
 
 /** One-line snapshot of what was just accomplished, shared by prompt + fallback. */
-function achievement(result: MissionCompleteResult): string {
+function achievement(result: MissionCompleteResult, plannedMinutes?: number | null): string {
   const { mission, goalProgress } = result;
   const parts = [`"${mission.title}"`];
   if (mission.actual_duration_minutes != null) {
-    parts.push(`durasi ${formatMinutes(mission.actual_duration_minutes)}`);
+    // Carry the daily-plan window alongside the actual so the review/cheer can
+    // judge plan-vs-actual instead of an absolute number.
+    const planned =
+      plannedMinutes != null && plannedMinutes > 0 ? ` (rencana ${formatMinutes(plannedMinutes)})` : '';
+    parts.push(`durasi ${formatMinutes(mission.actual_duration_minutes)}${planned}`);
   }
   if (goalProgress?.goalCompleted) {
     parts.push(`GOAL TUNTAS: "${goalProgress.goal.title}"`);
@@ -85,13 +109,17 @@ function achievement(result: MissionCompleteResult): string {
  * The Gemini prompt — pure so it can be unit-tested. `streakCount` is the
  * habit's current streak after this completion; its tier scales the celebration.
  */
-export function buildCompletionPrompt(result: MissionCompleteResult, streakCount = 0): string {
+export function buildCompletionPrompt(
+  result: MissionCompleteResult,
+  streakCount = 0,
+  plannedMinutes?: number | null
+): string {
   const tier = rewardTier(streakCount);
   const streakLine =
     streakCount > 0
       ? `STREAK SAAT INI: ${streakCount} hari beruntun (tingkat perayaan: ${tier} — ${TIER_LABEL[tier]}).`
       : `STREAK: belum ada rantai berjalan — ini bisa jadi awalnya.`;
-  const concern = durationConcern(result);
+  const concern = durationConcern(result, plannedMinutes);
 
   // When the duration is unhealthy, the cheer becomes an honest habit review:
   // acknowledge the completion, but DON'T celebrate the overrun as hard work.
@@ -99,7 +127,7 @@ export function buildCompletionPrompt(result: MissionCompleteResult, streakCount
     return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
 Sebuah misi baru saja DITUTUP sebagai SELESAI, TAPI durasinya bermasalah.
 
-MISI SELESAI: ${achievement(result)}
+MISI SELESAI: ${achievement(result, plannedMinutes)}
 ${streakLine}
 ⚠️ TINJAUAN KEBIASAAN: ${concern}.
 
@@ -123,7 +151,7 @@ Tulis pesannya sekarang.`;
   return `Kamu adalah pelatih disiplin bergaya militer untuk seorang operator (sebut dia "kamu").
 Sebuah misi baru saja DITUTUP sebagai SELESAI (berhasil).
 
-MISI SELESAI: ${achievement(result)}
+MISI SELESAI: ${achievement(result, plannedMinutes)}
 ${streakLine}
 
 Tugasmu: tulis SATU pesan MOTIVASIONAL SINGKAT dalam Bahasa Indonesia yang merayakan kemenangan ini dan menjaga momentum.
@@ -155,11 +183,15 @@ function streakBanner(streakCount: number): string {
  * Static motivational fallback when Gemini is unavailable. The celebration —
  * and the streak banner — escalate with the streak's reward tier.
  */
-export function fallbackCompletion(result: MissionCompleteResult, streakCount = 0): string {
+export function fallbackCompletion(
+  result: MissionCompleteResult,
+  streakCount = 0,
+  plannedMinutes?: number | null
+): string {
   const { mission, goalProgress } = result;
 
   // Unhealthy duration → review, not celebration (no streak banner either).
-  const concern = durationConcern(result);
+  const concern = durationConcern(result, plannedMinutes);
   if (concern) {
     return (
       `🎖️ <b>MISI SELESAI</b> — tapi mari ditinjau dulu.\n\n` +
@@ -181,10 +213,14 @@ export function fallbackCompletion(result: MissionCompleteResult, streakCount = 
 }
 
 /** Generate the cheer via Gemini, falling back to the static message. */
-export async function composeCompletionCheer(result: MissionCompleteResult, streakCount = 0): Promise<string> {
+export async function composeCompletionCheer(
+  result: MissionCompleteResult,
+  streakCount = 0,
+  plannedMinutes?: number | null
+): Promise<string> {
   try {
     // Short message → use the faster model with a tighter token budget.
-    return await generateText(buildCompletionPrompt(result, streakCount), {
+    return await generateText(buildCompletionPrompt(result, streakCount, plannedMinutes), {
       model: fastModel(),
       maxOutputTokens: 320,
       // Flash is a thinking model — disable thinking so the full short cheer fits.
@@ -192,6 +228,6 @@ export async function composeCompletionCheer(result: MissionCompleteResult, stre
     });
   } catch (err) {
     console.warn(`[Completion] Gemini unavailable (${(err as Error).message}) — using fallback`);
-    return fallbackCompletion(result, streakCount);
+    return fallbackCompletion(result, streakCount, plannedMinutes);
   }
 }

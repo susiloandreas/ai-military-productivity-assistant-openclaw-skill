@@ -185,6 +185,22 @@ function minimumViableLine(name: string): string {
   );
 }
 
+/** Suggested re-plan time: the next half-hour at least 30 min out, as 'HH:MM'. */
+function suggestReplanClock(now: Date): string {
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const slot = Math.min(Math.ceil((mins + 30) / 30) * 30, 23 * 60 + 59);
+  return `${String(Math.floor(slot / 60)).padStart(2, '0')}:${String(slot % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A propose-&-confirm re-plan offer for a missed habit: suggests a concrete new
+ * time the user can confirm by replying with the move command. The plan is NOT
+ * changed until they send it.
+ */
+export function replanLine(name: string, now: Date = new Date()): string {
+  return `💡 <b>JADWAL ULANG:</b> Balas <i>"geser ${name} ke ${suggestReplanClock(now)}"</i> untuk pindahkan.`;
+}
+
 /**
  * Habit reminder that confronts the user with the scheduled habit(s) due or
  * missed today. Returns null when nothing is due or missed — caller should fall

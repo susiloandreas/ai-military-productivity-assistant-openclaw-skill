@@ -3,7 +3,9 @@ import { MissionRepository } from '../repositories/MissionRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
 import { NotificationRepository } from '../repositories/NotificationRepository';
 import { StreakRepository } from '../repositories/StreakRepository';
+import { PlanRepository } from '../repositories/PlanRepository';
 import { StreakService } from '../services/StreakService';
+import { PlanService } from '../services/PlanService';
 import { sendTelegramMessage } from '../utils/telegram';
 import { COACHING_HOURS, slotForHour, nextRunDelayMs, coachingDedupKey } from './coachingContext';
 import { composeCoaching } from './composeCoaching';
@@ -13,6 +15,7 @@ const missionRepo = new MissionRepository();
 const habitRepo = new HabitRepository();
 const notificationRepo = new NotificationRepository();
 const streakService = new StreakService(new StreakRepository(), habitRepo);
+const planService = new PlanService(new PlanRepository(), habitRepo);
 
 /** Build context, ask Gemini for a brief coaching message, deliver via Telegram. */
 async function runCoaching(hour: number): Promise<void> {
@@ -26,7 +29,7 @@ async function runCoaching(hour: number): Promise<void> {
     return;
   }
 
-  const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slot, now, streakService);
+  const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slot, now, streakService, planService);
   console.log(`[Coaching] ${now.toISOString()} — sent ${slot} coaching`);
 
   await sendTelegramMessage(message).catch(err =>

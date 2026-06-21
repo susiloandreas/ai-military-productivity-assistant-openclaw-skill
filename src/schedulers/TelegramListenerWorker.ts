@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { getTelegramUpdates, sendTelegramMessage } from '../utils/telegram';
 import { parseIntent, parseExpiryStatusReply } from '../nlp/missionParser';
+import { parsePlanEdit } from '../nlp/planParser';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
@@ -8,6 +9,8 @@ import { GoalService } from '../services/GoalService';
 import { MissionService } from '../services/MissionService';
 import { StreakService } from '../services/StreakService';
 import { StreakRepository } from '../repositories/StreakRepository';
+import { PlanRepository } from '../repositories/PlanRepository';
+import { PlanService } from '../services/PlanService';
 import {
   replyStarted,
   replyCompleted,
@@ -57,9 +60,18 @@ const missionRepo = new MissionRepository();
 const goalRepo = new GoalRepository();
 const habitRepo = new HabitRepository();
 const streakRepo = new StreakRepository();
+const planRepo = new PlanRepository();
 const goalService = new GoalService(goalRepo, habitRepo);
 const streakService = new StreakService(streakRepo, habitRepo);
-const missionService = new MissionService(missionRepo, goalRepo, habitRepo, goalService, streakService);
+const planService = new PlanService(planRepo, habitRepo);
+const missionService = new MissionService(
+  missionRepo,
+  goalRepo,
+  habitRepo,
+  goalService,
+  streakService,
+  planService
+);
 
 const POLL_TIMEOUT_SEC = 30;
 const ERROR_BACKOFF_MS = 5000;
@@ -101,7 +113,9 @@ async function handleText(text: string): Promise<void> {
         if (result.mission.status === 'completed') {
           const streak = await streakCountFor(result.mission);
           await sendTelegramMessage(replyExpiryResolved(result, Math.random, streak));
-          await sendTelegramMessage(await composeCompletionCheer(result, streak)).catch(() => null);
+          await sendTelegramMessage(
+            await composeCompletionCheer(result, streak, result.plannedMinutes)
+          ).catch(() => null);
         } else {
           await sendTelegramMessage(replyExpiryResolved(result));
           await sendTelegramMessage(await composeNextStepNudge(result.mission)).catch(() => null);
@@ -138,7 +152,23 @@ async function handleText(text: string): Promise<void> {
     }
   }
 
-  if (!intent) return; // not a recognized request — stay silent
+  if (!intent) {
+    // Plan propose-&-confirm: a bare "gas"/"tolak" accepts or rejects a pending AI
+    // proposal. It acts only when a proposal is actually waiting, so it never
+    // hijacks an ordinary one-word message.
+    const planEdit = parsePlanEdit(text);
+    if (planEdit) {
+      // accept/reject only act when a proposal is pending (so a bare "ok" with
+      // nothing to confirm stays silent); edits (geser/skip/tunda) apply directly.
+      const gated = planEdit.kind === 'accept' || planEdit.kind === 'reject';
+      if (!gated || (await planService.getProposed(DEFAULT_USER_ID)).length > 0) {
+        const result = await planService.applyEdit(DEFAULT_USER_ID, text);
+        await sendTelegramMessage(result.message).catch(() => null);
+        console.log(`[Telegram Listener] Plan ${planEdit.kind}`);
+      }
+    }
+    return; // not a recognized request — stay silent
+  }
 
   try {
     switch (intent.kind) {
@@ -163,8 +193,11 @@ async function handleText(text: string): Promise<void> {
         if (!intent.notes) await missionService.requestNotes(result.mission.id);
         const streak = await streakCountFor(result.mission);
         await sendTelegramMessage(replyCompleted(result, Math.random, streak));
-        // Follow with an AI-generated motivational cheer that escalates with the streak.
-        await sendTelegramMessage(await composeCompletionCheer(result, streak)).catch(() => null);
+        // Follow with an AI-generated motivational cheer that escalates with the streak,
+        // flipping to an honest review when actual duration blew past the planned block.
+        await sendTelegramMessage(
+          await composeCompletionCheer(result, streak, result.plannedMinutes)
+        ).catch(() => null);
         console.log(`[Telegram Listener] Completed mission "${result.mission.title}"`);
         break;
       }
@@ -212,7 +245,7 @@ async function handleText(text: string): Promise<void> {
         // Same coaching engine as the scheduled briefs; slot follows the hour,
         // so a morning brief includes the yesterday review + 7-day habit metrics.
         const now = new Date();
-        const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now, streakService);
+        const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now, streakService, planService);
         await sendTelegramMessage(message);
         console.log('[Telegram Listener] Sent on-demand brief');
         break;

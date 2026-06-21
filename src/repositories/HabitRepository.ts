@@ -66,6 +66,18 @@ export class HabitRepository {
     return rows[0] ?? null;
   }
 
+  /** Find a habit type by name across all the user's categories (case-insensitive), or null. */
+  async findHabitTypeByName(userId: string, name: string): Promise<HabitType | null> {
+    const { rows } = await pool.query<HabitType>(
+      `SELECT ht.* FROM habit_types ht
+         JOIN habit_categories hc ON hc.id = ht.habit_category_id
+        WHERE hc.user_id = $1 AND LOWER(ht.name) = LOWER($2)
+        LIMIT 1`,
+      [userId, name]
+    );
+    return rows[0] ?? null;
+  }
+
   // ── Habit Schedules ───────────────────────────────────────────────────────
 
   async createSchedule(

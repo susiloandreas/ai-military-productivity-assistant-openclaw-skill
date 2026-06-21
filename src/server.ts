@@ -10,11 +10,13 @@ import { SleepRepository } from './repositories/SleepRepository';
 import { DisciplineRepository } from './repositories/DisciplineRepository';
 import { CoachingRepository } from './repositories/CoachingRepository';
 import { StreakRepository } from './repositories/StreakRepository';
+import { PlanRepository } from './repositories/PlanRepository';
 
 // Services
 import { GoalService } from './services/GoalService';
 import { MissionService } from './services/MissionService';
 import { StreakService } from './services/StreakService';
+import { PlanService } from './services/PlanService';
 import { HabitService } from './services/HabitService';
 import { TennisService } from './services/TennisService';
 import { SleepService } from './services/SleepService';
@@ -32,6 +34,7 @@ import { handleHabitCommand } from './commands/habitCommands';
 import { handleTennisCommand } from './commands/tennisCommands';
 import { handleSleepCommand } from './commands/sleepCommands';
 import { handleStatusCommand } from './commands/statusCommands';
+import { handlePlanCommand } from './commands/planCommands';
 
 import { CommandRequest, CommandResponse, DEFAULT_USER_ID } from './types';
 import { formatError } from './utils/formatter';
@@ -45,10 +48,12 @@ const sleepRepo        = new SleepRepository();
 const disciplineRepo   = new DisciplineRepository();
 const coachingRepo     = new CoachingRepository();
 const streakRepo       = new StreakRepository();
+const planRepo         = new PlanRepository();
 
 const goalService      = new GoalService(goalRepo, habitRepo);
 const streakService    = new StreakService(streakRepo, habitRepo);
-const missionService   = new MissionService(missionRepo, goalRepo, habitRepo, goalService, streakService);
+const planService      = new PlanService(planRepo, habitRepo);
+const missionService   = new MissionService(missionRepo, goalRepo, habitRepo, goalService, streakService, planService);
 const habitService     = new HabitService(habitRepo, missionRepo, goalService);
 const tennisService    = new TennisService(tennisRepo, missionService);
 const sleepService     = new SleepService(sleepRepo);
@@ -92,6 +97,9 @@ app.post('/commands', async (req: Request, res: Response) => {
       case '/habit':
         output = await handleHabitCommand(args, uid, habitService);
         break;
+      case '/plan':
+        output = await handlePlanCommand(args, uid, planService);
+        break;
       case '/tennis':
         output = await handleTennisCommand(args, uid, tennisService);
         break;
@@ -111,7 +119,7 @@ app.post('/commands', async (req: Request, res: Response) => {
         break;
       default:
         output = formatError(
-          `Unknown command: ${root}. Try /mission, /habit, /tennis, /sleep, /status`
+          `Unknown command: ${root}. Try /mission, /habit, /plan, /tennis, /sleep, /status`
         );
     }
   } catch (err) {

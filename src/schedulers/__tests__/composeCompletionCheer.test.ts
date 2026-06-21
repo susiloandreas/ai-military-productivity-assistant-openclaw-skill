@@ -95,6 +95,30 @@ describe('composeCompletionCheer — habit review on unhealthy duration', () => 
     expect(durationConcern(result({ mission: mission({ actual_duration_minutes: null }) }))).toBeNull();
   });
 
+  it('reviews when actual runs at least 2× the planned block', () => {
+    const overran = result({ mission: mission({ title: 'workout', actual_duration_minutes: 180 }) });
+    expect(durationConcern(overran, 60)).toMatch(/rencana harian/);
+  });
+
+  it('does not flag a minor overrun within 2× of the planned block', () => {
+    const slight = result({ mission: mission({ title: 'workout', actual_duration_minutes: 90 }) });
+    expect(durationConcern(slight, 60)).toBeNull();
+  });
+
+  it('ignores the plan when none is known', () => {
+    const overran = result({ mission: mission({ title: 'workout', actual_duration_minutes: 180 }) });
+    expect(durationConcern(overran, null)).toBeNull();
+  });
+
+  it('feeds the planned window into the prompt context', () => {
+    const prompt = buildCompletionPrompt(
+      result({ mission: mission({ title: 'workout', actual_duration_minutes: 45 }) }),
+      0,
+      60
+    );
+    expect(prompt).toContain('rencana 1h');
+  });
+
   it('switches the prompt to an honest review, not celebration', () => {
     const prompt = buildCompletionPrompt(longSleep(), 4);
     expect(prompt).toContain('TINJAUAN KEBIASAAN');

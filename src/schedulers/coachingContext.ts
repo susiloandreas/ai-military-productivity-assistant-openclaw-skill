@@ -162,6 +162,9 @@ export function buildCoachingContext(input: {
   held: Mission[];
   recentCompleted: Mission[];
   schedules: HabitScheduleWithNames[];
+  /** Today's plan-derived schedules for the DUE list (respects skip/move/done).
+   *  Multi-day metrics still use `schedules` (the template). Defaults to `schedules`. */
+  dueSchedules?: HabitScheduleWithNames[];
   loggedTypeIds: Set<string>;
   now: Date;
   yesterday?: YesterdayReview | null;
@@ -185,7 +188,7 @@ export function buildCoachingContext(input: {
     heldCount: input.held.length,
     todayCompleted,
     weekCompletedCount: input.recentCompleted.length,
-    due: selectDueHabits(input.schedules, input.loggedTypeIds, input.now),
+    due: selectDueHabits(input.dueSchedules ?? input.schedules, input.loggedTypeIds, input.now),
     yesterday: input.yesterday ?? null,
     // The 7-day metric block is a morning concern; skip the work for other slots.
     habitMetrics:

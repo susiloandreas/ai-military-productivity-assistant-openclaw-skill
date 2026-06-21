@@ -8,6 +8,7 @@ Military Discipline & Performance Operating System — a standalone Node.js/Type
 - **Unified activity logging** — every activity is a mission: *live* (`/mission start` → `complete`) or *retroactive* (`/mission log`). Both auto-advance the linked goal.
 - **Goal system** — goals per category *or* per specific habit (e.g. a "running" goal), with milestones and a final-exam milestone; logging an activity auto-advances its linked goals
 - **Retroactive activity logs** — `/mission log <cat> <type> <duration>` for activities where no live mission was started
+- **Adaptive daily plan** — habit schedules are a recurring *template*; each day materializes a mutable plan of time-blocks you can change on the fly in plain language (`geser`/move, `skip`, `tambah`/add, `tunda`/snooze). Reminders, coaching, and scoring read the plan, so a deliberate rest never nags. The morning brief can *propose* a catch-up plan you accept with `gas` (propose-&-confirm — the AI never edits the plan on its own).
 - **Tennis training** — session breakdown by type (serve, footwork, rally, endurance, match)
 - **Sleep tracking** — duration, quality, 7-day debt, and readiness rating
 - **Daily briefing** — `/status briefing` aggregates all data into a single military-style report
@@ -107,6 +108,12 @@ Body: `{ "command": "/mission start <title> [--eta 2h] [--category exercise]" }`
 | `/habit schedule add <cat> <type> <time> <days>` | Schedule a habit (e.g. `06:00 mon,wed,fri`) |
 | `/habit schedule list` | List active habit schedules |
 | `/habit summary` | 7-day habit totals |
+| `/plan` | Today's plan, materialized from the habit-schedule template |
+| `/plan geser <habit> ke <time>` | Move a block (e.g. `geser lari ke jam 5 sore`) |
+| `/plan skip <habit>` | Skip a block today — a deliberate rest, not a miss |
+| `/plan tambah <title> [<dur>] [jam <time>]` | Add a one-off block |
+| `/plan tunda [<habit>] [<dur>]` | Snooze the (nearest) block |
+| `/plan draft` → `gas` / `tolak` | Propose a catch-up plan, then accept / reject it |
 | `/tennis start <type>` | Start a tennis mission |
 | `/tennis log <type> <duration>` | Log a tennis session |
 | `/tennis summary` | Weekly tennis breakdown |
@@ -140,6 +147,29 @@ habits stick:
   predicate in `src/services/toneGate.ts`.
 - **Escalating reward** — the AI completion cheer (`composeCompletionCheer`) scales
   its celebration with the streak's reward tier (1 / 3 / 7 / 14 / 30+ days).
+
+## Daily plan (today's orders)
+
+`habit_schedules` is the durable recurring **template** ("standing orders"). On the
+first read of a day, `PlanService.getTodayPlan` lazily materializes a dated, mutable
+plan of `plan_blocks` from the schedules due that weekday — no cron, mirroring the
+lazy-on-read pattern of `habit_streaks`. You then change *today* without touching the
+template; tomorrow regenerates fresh.
+
+- **Edit in plain language** (`src/nlp/planParser.ts`, typo-tolerant, EN + ID):
+  `geser <habit> ke <time>` (move), `skip <habit>` (rest — **not** a miss),
+  `tambah <title> [<dur>] [jam <time>]` (one-off add — links a matching habit-type,
+  else stays a typeless one-off), `tunda [<dur>]` (snooze). Via `/plan` or free-text chat.
+- **Plan-aware reminders** — the idle nudge and coaching read the plan, not the raw
+  schedule: a `skipped` block never nags, a `moved` block is judged at its new time, a
+  `done` block drops out. For an unedited plan the reminders are identical to before
+  (a parity test guards this). A completed habit mission auto-marks its matching block done.
+- **Propose-&-confirm AI** — the morning brief can draft a catch-up plan for what you've
+  already missed, written as `proposed` blocks that reminders/scoring **ignore** until you
+  accept with `gas` (reject with `tolak`). A missed-habit nudge offers a concrete re-plan
+  (`geser …`) you confirm by sending it. The AI never mutates the plan on its own.
+
+See `PlanService` + the pure cores `src/services/planMaterialize.ts` and `src/services/planEdit.ts`.
 
 ## Coaching (Gemini)
 

@@ -25,6 +25,8 @@ import {
   replyHabitsToday,
   replyAbortNeedsTarget,
   replyError,
+  replyPlan,
+  replyPlanDraft,
 } from './telegramReplies';
 import { AbortNeedsTargetError } from '../services/MissionService';
 import { composeCoaching } from './composeCoaching';
@@ -158,13 +160,25 @@ async function handleText(text: string): Promise<void> {
     // hijacks an ordinary one-word message.
     const planEdit = parsePlanEdit(text);
     if (planEdit) {
-      // accept/reject only act when a proposal is pending (so a bare "ok" with
-      // nothing to confirm stays silent); edits (geser/skip/tunda) apply directly.
-      const gated = planEdit.kind === 'accept' || planEdit.kind === 'reject';
-      if (!gated || (await planService.getProposed(DEFAULT_USER_ID)).length > 0) {
-        const result = await planService.applyEdit(DEFAULT_USER_ID, text);
-        await sendTelegramMessage(result.message).catch(() => null);
-        console.log(`[Telegram Listener] Plan ${planEdit.kind}`);
+      if (planEdit.kind === 'view') {
+        // "plan" / "rencana" — show today's orders.
+        const blocks = await planService.getTodayPlan(DEFAULT_USER_ID);
+        await sendTelegramMessage(replyPlan(blocks)).catch(() => null);
+        console.log("[Telegram Listener] Sent today's plan");
+      } else if (planEdit.kind === 'draft') {
+        // "usul" / "rancang" — draft a catch-up plan for what's been missed, awaiting "gas"/"tolak".
+        const proposed = await planService.proposeDay(DEFAULT_USER_ID);
+        await sendTelegramMessage(replyPlanDraft(proposed)).catch(() => null);
+        console.log('[Telegram Listener] Drafted catch-up plan');
+      } else {
+        // accept/reject only act when a proposal is pending (so a bare "ok" with
+        // nothing to confirm stays silent); edits (geser/skip/tunda) apply directly.
+        const gated = planEdit.kind === 'accept' || planEdit.kind === 'reject';
+        if (!gated || (await planService.getProposed(DEFAULT_USER_ID)).length > 0) {
+          const result = await planService.applyEdit(DEFAULT_USER_ID, text);
+          await sendTelegramMessage(result.message).catch(() => null);
+          console.log(`[Telegram Listener] Plan ${planEdit.kind}`);
+        }
       }
     }
     return; // not a recognized request — stay silent

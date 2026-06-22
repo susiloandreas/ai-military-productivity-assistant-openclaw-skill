@@ -93,4 +93,20 @@ describe('parsePlanEdit', () => {
       expect(parsePlanEdit(s)).toEqual({ kind: 'reject' });
     }
   });
+
+  it('parses a view request', () => {
+    for (const s of ['plan', 'rencana', 'jadwal hari ini', 'lihat plan', 'plan help', 'Plan']) {
+      expect(parsePlanEdit(s)).toEqual({ kind: 'view' });
+    }
+  });
+
+  it('parses a draft request', () => {
+    for (const s of ['plan draft', 'usul', 'usulkan', 'rancang', 'draft']) {
+      expect(parsePlanEdit(s)).toEqual({ kind: 'draft' });
+    }
+  });
+
+  it('routes "plan draft" to draft, not the bare-plan view', () => {
+    expect(parsePlanEdit('plan draft')).toEqual({ kind: 'draft' });
+  });
 });

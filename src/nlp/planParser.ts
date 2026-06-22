@@ -1,21 +1,36 @@
 /**
  * Rule-based parser for on-the-fly plan edits — the /plan counterpart to
- * missionParser. Recognizes four verbs, typo-tolerant via fuzzyMatch:
+ * missionParser. Recognizes the view/draft intents plus four edit verbs,
+ * typo-tolerant via fuzzyMatch:
+ *   view   — "plan", "rencana", "jadwal hari ini" (show today's orders)
+ *   draft  — "plan draft", "usul", "rancang" (draft a catch-up plan)
  *   move   — "geser lari ke jam 5 sore", "pindah workout ke 06:30"
  *   skip   — "skip meditasi hari ini", "lewati english writing"
  *   add    — "tambah baca 30 menit jam 9 malam", "tambah lunch jam 12"
  *   snooze — "tunda 30 menit", "snooze 15m", "tunda lari"
- * Returns null when no verb matches. Pure and unit-testable.
+ * Returns null when nothing matches. Pure and unit-testable.
  */
 import { closestPhrase } from './fuzzyMatch';
 
 export type PlanEditIntent =
+  | { kind: 'view' }
+  | { kind: 'draft' }
   | { kind: 'move'; target: string; at: string }
   | { kind: 'skip'; target: string }
   | { kind: 'add'; title: string; at: string | null; durationStr: string | null }
   | { kind: 'snooze'; minutes: number; target: string | null }
   | { kind: 'accept' }
   | { kind: 'reject' };
+
+// Whole-message request to see today's plan ("today's orders").
+const VIEW_PHRASES = new Set([
+  'plan', 'rencana', 'jadwal', 'rencana hari ini', 'plan hari ini', 'jadwal hari ini',
+  'lihat plan', 'lihat rencana', 'lihat jadwal', 'plan help', 'orders',
+]);
+// Whole-message request to draft an AI catch-up plan for what's been missed.
+const DRAFT_PHRASES = new Set([
+  'plan draft', 'draft', 'draft plan', 'usul', 'usulkan', 'usulkan plan', 'rancang', 'rancang plan', 'propose',
+]);
 
 // Whole-message confirmations for an AI proposal (propose-&-confirm).
 const ACCEPT_PHRASES = new Set([
@@ -106,6 +121,11 @@ export function parsePlanEdit(raw: string): PlanEditIntent | null {
   // Accept / reject an AI proposal — whole-message confirmations, checked first.
   if (ACCEPT_PHRASES.has(lower) || closestPhrase(lower, ACCEPT_PHRASES, { whole: true })) return { kind: 'accept' };
   if (REJECT_PHRASES.has(lower) || closestPhrase(lower, REJECT_PHRASES, { whole: true })) return { kind: 'reject' };
+
+  // View / draft — whole-message intents with no target. Draft is checked first so
+  // "plan draft" is not swallowed by the bare-"plan" view phrase.
+  if (DRAFT_PHRASES.has(lower) || closestPhrase(lower, DRAFT_PHRASES, { whole: true })) return { kind: 'draft' };
+  if (VIEW_PHRASES.has(lower) || closestPhrase(lower, VIEW_PHRASES, { whole: true })) return { kind: 'view' };
 
   // Move — needs a target and a time.
   const mv = closestPhrase(lower, MOVE_TRIGGERS);

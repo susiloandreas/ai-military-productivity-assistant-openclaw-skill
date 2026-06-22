@@ -192,7 +192,8 @@ export class PlanService {
   /** Parse a natural-language edit, resolve its target in today's plan, apply it. */
   async applyEdit(userId: string, text: string, now: Date = new Date()): Promise<PlanEditOutcome> {
     const intent = parsePlanEdit(text);
-    if (!intent) {
+    // view/draft are read intents, not edits — the caller handles those directly.
+    if (!intent || intent.kind === 'view' || intent.kind === 'draft') {
       return { ok: false, message: 'Plan command not recognized. Try: geser / skip / tambah / tunda.' };
     }
     const blocks = await this.getTodayPlan(userId, now);

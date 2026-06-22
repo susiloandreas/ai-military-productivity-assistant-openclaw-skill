@@ -4,7 +4,7 @@
  * mirroring the idle-reminder copy pools. All builders take an injectable `rng`
  * so tests can be deterministic.
  */
-import { Mission, HabitScheduleWithNames } from '../types';
+import { Mission, HabitScheduleWithNames, PlanBlock } from '../types';
 import { MissionCompleteResult } from '../services/MissionService';
 import { formatMinutes } from '../utils/duration';
 
@@ -280,11 +280,51 @@ export function replyHelp(): string {
 ❌ <b>Batalkan</b> — <i>"batalkan misi"</i>
 📊 <b>Status misi</b> — <i>"status"</i>
 📋 <b>Kebiasaan hari ini</b> — <i>"kebiasaan"</i>
-🗓️ <b>Rencana hari ini</b> — <i>"/plan"</i> · ubah: <i>"geser lari ke jam 5 sore"</i>, <i>"skip meditasi"</i>, <i>"tunda 30 menit"</i>
+🗓️ <b>Rencana hari ini</b> — <i>"plan"</i> / <i>"rencana"</i> · ubah: <i>"geser lari ke jam 5 sore"</i>, <i>"skip meditasi"</i>, <i>"tunda 30 menit"</i>
+🧩 <b>Usulkan rencana susulan</b> — <i>"usul"</i> / <i>"rancang"</i> → balas <i>"gas"</i> / <i>"tolak"</i>
 📨 <b>Pengarahan</b> — <i>"brief"</i>
 🆘 <b>Bantuan</b> — <i>"help"</i>
 
 Tulis dalam bahasa biasa — tidak perlu format kaku.`;
+}
+
+// ── Plan view / draft ────────────────────────────────────────────────────────
+const PLAN_GLYPH: Record<PlanBlock['status'], string> = {
+  planned: '◻️',
+  done: '✅',
+  skipped: '⏭️',
+  moved: '↪️',
+  proposed: '❓',
+};
+
+/** 'HH:MM:SS' → 'HH:MM'. */
+const hhmm = (t: string): string => t.slice(0, 5);
+
+function planLine(b: PlanBlock): string {
+  const dur = b.duration_minutes ? ` · ${formatMinutes(b.duration_minutes)}` : '';
+  return `${hhmm(b.start_time)} ${PLAN_GLYPH[b.status]} ${b.title}${dur}`;
+}
+
+/** Today's orders. Proposed (unconfirmed) blocks are excluded — they show via replyPlanDraft. */
+export function replyPlan(blocks: PlanBlock[]): string {
+  const visible = blocks.filter(b => b.status !== 'proposed');
+  const header = '🗓️ <b>RENCANA HARI INI</b>';
+  if (visible.length === 0) {
+    return `${header}\n\nBelum ada blok terjadwal hari ini.\nTambah lewat <i>"tambah &lt;judul&gt; jam &lt;waktu&gt;"</i> atau atur kebiasaan berulang.`;
+  }
+  const body = visible.map(planLine).join('\n');
+  const hints = 'Ubah: <i>"geser lari ke jam 5 sore"</i> · <i>"skip meditasi"</i> · <i>"tunda 30 menit"</i>';
+  return `${header}\n\n${body}\n\n${hints}`;
+}
+
+/** A drafted catch-up plan awaiting confirmation. Empty when nothing has been missed. */
+export function replyPlanDraft(proposed: PlanBlock[]): string {
+  const header = '🗓️ <b>USULAN RENCANA SUSULAN</b>';
+  if (proposed.length === 0) {
+    return `${header}\n\nBelum ada yang terlewat — tidak ada yang perlu dikejar.`;
+  }
+  const body = proposed.map(planLine).join('\n');
+  return `${header}\n\n${body}\n\nBalas <i>"gas"</i> untuk kunci, <i>"tolak"</i> untuk batalkan.`;
 }
 
 // ── Today's habits ───────────────────────────────────────────────────────────

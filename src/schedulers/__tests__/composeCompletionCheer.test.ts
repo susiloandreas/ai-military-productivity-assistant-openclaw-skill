@@ -1,8 +1,8 @@
 import {
   buildCompletionPrompt,
   fallbackCompletion,
-  rewardTier,
-  durationConcern,
+  reviewFacts,
+  durationAnomaly,
 } from '../composeCompletionCheer';
 import { MissionCompleteResult } from '../../services/MissionService';
 import { ProgressResult } from '../../services/GoalService';
@@ -18,8 +18,8 @@ function mission(overrides: Partial<Mission> = {}): Mission {
     eta_minutes: 60,
     mode: 'live',
     status: 'completed',
-    started_at: new Date(),
-    completed_at: new Date(),
+    started_at: new Date('2026-01-05T06:00:00'),
+    completed_at: new Date('2026-01-05T06:45:00'),
     paused_at: null,
     actual_duration_minutes: 45,
     notes: null,
@@ -34,7 +34,7 @@ function result(overrides: Partial<MissionCompleteResult> = {}): MissionComplete
 
 function goalProgress(overrides: Partial<ProgressResult> = {}): ProgressResult {
   return {
-    goal: { title: 'Kuasai TypeScript' } as Goal,
+    goal: { title: 'Master TypeScript' } as Goal,
     progressLog: {} as ProgressResult['progressLog'],
     totalProgress: 120,
     milestonesUnlocked: [],
@@ -43,127 +43,143 @@ function goalProgress(overrides: Partial<ProgressResult> = {}): ProgressResult {
   };
 }
 
-describe('composeCompletionCheer', () => {
-  it('builds a positive-reinforcement prompt grounded in the completed mission', () => {
+describe('composeCompletionCheer — review prompt', () => {
+  it('builds an English review prompt grounded in the session facts', () => {
     const prompt = buildCompletionPrompt(result({ mission: mission({ title: 'refactor parser' }) }));
-    expect(prompt).toContain('SELESAI');
-    expect(prompt).toContain('PENGUATAN POSITIF');
+    expect(prompt).toContain('SESSION DATA');
+    expect(prompt).toContain('reviewing the session');
     expect(prompt).toContain('refactor parser');
-    expect(prompt).toContain('durasi 45m'); // duration is fed in
+    expect(prompt).toContain('Duration: 45 minutes');
+    expect(prompt).toContain('DO NOT praise the duration');
+  });
+
+  it('feeds the target duration into the prompt when a plan block matched', () => {
+    const prompt = buildCompletionPrompt(
+      result({ mission: mission({ title: 'workout', actual_duration_minutes: 45 }) }),
+      60
+    );
+    expect(prompt).toContain('Target duration: 60 minutes');
+  });
+
+  it('marks the target as not set when no plan block matched', () => {
+    const prompt = buildCompletionPrompt(result());
+    expect(prompt).toContain('Target duration: not set');
   });
 
   it('surfaces a completed goal in the prompt', () => {
     const prompt = buildCompletionPrompt(
       result({ goalProgress: goalProgress({ goalCompleted: true }) })
     );
-    expect(prompt).toContain('GOAL TUNTAS');
-    expect(prompt).toContain('Kuasai TypeScript');
+    expect(prompt).toContain('goal completed');
+    expect(prompt).toContain('Master TypeScript');
   });
 
-  it('renders a static motivational fallback referencing the mission', () => {
+  it('renders a static English fallback referencing the mission', () => {
     const out = fallbackCompletion(result({ mission: mission({ title: 'refactor parser' }) }));
+    expect(out).toContain('SESSION REVIEW');
     expect(out).toContain('refactor parser');
-    expect(out).toContain('KEMENANGAN');
-  });
-
-  it('celebrates a completed goal in the fallback', () => {
-    const out = fallbackCompletion(result({ goalProgress: goalProgress({ goalCompleted: true }) }));
-    expect(out).toContain('GOAL TUNTAS');
-    expect(out).toContain('Kuasai TypeScript');
+    expect(out).not.toMatch(/great|amazing|impressive/i);
   });
 });
 
-describe('composeCompletionCheer — habit review on unhealthy duration', () => {
-  const longSleep = () =>
-    result({ mission: mission({ title: 'tidur', actual_duration_minutes: 15 * 60 + 11 }) });
+describe('reviewFacts — duration vs target', () => {
+  it('computes the actual/target ratio as a percentage', () => {
+    const f = reviewFacts(result({ mission: mission({ actual_duration_minutes: 180 }) }), 60);
+    expect(f.ratioPct).toBe(300);
+    expect(f.targetMinutes).toBe(60);
+  });
 
-  it('flags an over-long sleep as a concern', () => {
-    expect(durationConcern(longSleep())).toMatch(/tidur terlalu lama/);
+  it('leaves the ratio null when no target is known', () => {
+    const f = reviewFacts(result());
+    expect(f.targetMinutes).toBeNull();
+    expect(f.ratioPct).toBeNull();
+  });
+
+  it('the fallback flags a duration past 120% of target as too long', () => {
+    const out = fallbackCompletion(
+      result({ mission: mission({ title: 'workout', actual_duration_minutes: 180 }) }),
+      60
+    );
+    expect(out).toContain('too long');
+    expect(out).toMatch(/300%/);
+  });
+
+  it('the fallback calls 80–120% pacing reasonably balanced', () => {
+    const out = fallbackCompletion(
+      result({ mission: mission({ title: 'workout', actual_duration_minutes: 66 }) }),
+      60
+    );
+    expect(out).toContain('reasonably balanced');
+  });
+});
+
+describe('reviewFacts — off-plan start', () => {
+  // Scheduled 06:00, started 08:00 → 120 min late, grace 30 → off-plan.
+  const lateStart = () =>
+    result({ mission: mission({ started_at: new Date('2026-01-05T08:00:00') }) });
+
+  it('flags a start past the grace window as off-plan', () => {
+    const f = reviewFacts(lateStart(), 60, '2026-01-05T06:00:00', 30);
+    expect(f.lateMinutes).toBe(120);
+    expect(f.offPlanStart).toBe(true);
+  });
+
+  it('does not flag a start within the grace window', () => {
+    const onTime = result({ mission: mission({ started_at: new Date('2026-01-05T06:20:00') }) });
+    const f = reviewFacts(onTime, 60, '2026-01-05T06:00:00', 30);
+    expect(f.offPlanStart).toBe(false);
+  });
+
+  it('has no start verdict when the block is not scheduled', () => {
+    const f = reviewFacts(result(), 60);
+    expect(f.plannedStartHHMM).toBeNull();
+    expect(f.lateMinutes).toBeNull();
+    expect(f.offPlanStart).toBe(false);
+  });
+
+  it('the fallback calls out an off-plan start', () => {
+    const out = fallbackCompletion(lateStart(), 60, '2026-01-05T06:00:00', 30);
+    expect(out).toContain('off-plan');
+    expect(out).toContain('06:00');
+  });
+
+  it('falls back to the default grace for an ad-hoc block', () => {
+    // 40 min late, no schedule grace → default 30 → off-plan.
+    const f = reviewFacts(
+      result({ mission: mission({ started_at: new Date('2026-01-05T06:40:00') }) }),
+      60,
+      '2026-01-05T06:00:00',
+      null
+    );
+    expect(f.graceMinutes).toBe(30);
+    expect(f.offPlanStart).toBe(true);
+  });
+});
+
+describe('durationAnomaly — absolute health/timer caps', () => {
+  it('flags an over-long sleep', () => {
+    const longSleep = result({ mission: mission({ title: 'tidur', actual_duration_minutes: 15 * 60 + 11 }) });
+    expect(durationAnomaly(longSleep)).toMatch(/oversleeping/);
   });
 
   it('does not flag a healthy sleep', () => {
     const ok = result({ mission: mission({ title: 'tidur', actual_duration_minutes: 8 * 60 }) });
-    expect(durationConcern(ok)).toBeNull();
+    expect(durationAnomaly(ok)).toBeNull();
   });
 
   it('flags an absurdly long generic session as a forgotten timer', () => {
     const marathon = result({ mission: mission({ title: 'baca buku', actual_duration_minutes: 17 * 60 }) });
-    expect(durationConcern(marathon)).toMatch(/timer lupa/);
+    expect(durationAnomaly(marathon)).toMatch(/timer left running/);
   });
 
   it('does not flag missions with no recorded duration', () => {
-    expect(durationConcern(result({ mission: mission({ actual_duration_minutes: null }) }))).toBeNull();
+    expect(durationAnomaly(result({ mission: mission({ actual_duration_minutes: null }) }))).toBeNull();
   });
 
-  it('reviews when actual runs at least 2× the planned block', () => {
-    const overran = result({ mission: mission({ title: 'workout', actual_duration_minutes: 180 }) });
-    expect(durationConcern(overran, 60)).toMatch(/rencana harian/);
-  });
-
-  it('does not flag a minor overrun within 2× of the planned block', () => {
-    const slight = result({ mission: mission({ title: 'workout', actual_duration_minutes: 90 }) });
-    expect(durationConcern(slight, 60)).toBeNull();
-  });
-
-  it('ignores the plan when none is known', () => {
-    const overran = result({ mission: mission({ title: 'workout', actual_duration_minutes: 180 }) });
-    expect(durationConcern(overran, null)).toBeNull();
-  });
-
-  it('feeds the planned window into the prompt context', () => {
-    const prompt = buildCompletionPrompt(
-      result({ mission: mission({ title: 'workout', actual_duration_minutes: 45 }) }),
-      0,
-      60
-    );
-    expect(prompt).toContain('rencana 1h');
-  });
-
-  it('switches the prompt to an honest review, not celebration', () => {
-    const prompt = buildCompletionPrompt(longSleep(), 4);
-    expect(prompt).toContain('TINJAUAN KEBIASAAN');
-    expect(prompt).toContain('KOREKSI YANG SUPORTIF');
-    expect(prompt).toMatch(/JANGAN memuji/);
-    expect(prompt).not.toContain('PENGUATAN POSITIF');
-  });
-
-  it('reviews instead of cheering in the fallback, with no streak banner', () => {
-    const out = fallbackCompletion(longSleep(), 7);
-    expect(out).toContain('ditinjau');
-    expect(out).toContain('dikoreksi');
-    expect(out).not.toContain('STREAK 7 HARI');
-  });
-});
-
-describe('composeCompletionCheer — escalating reward tier', () => {
-  it('maps streak length to tiers 1/3/7/14/30', () => {
-    expect(rewardTier(0)).toBe(1);
-    expect(rewardTier(2)).toBe(1);
-    expect(rewardTier(3)).toBe(3);
-    expect(rewardTier(6)).toBe(3);
-    expect(rewardTier(7)).toBe(7);
-    expect(rewardTier(13)).toBe(7);
-    expect(rewardTier(14)).toBe(14);
-    expect(rewardTier(30)).toBe(30);
-    expect(rewardTier(100)).toBe(30);
-  });
-
-  it('feeds the streak count and tier into the prompt', () => {
-    const prompt = buildCompletionPrompt(result(), 7);
-    expect(prompt).toContain('7 hari beruntun');
-    expect(prompt).toContain('tingkat perayaan: 7');
-  });
-
-  it('omits a streak banner when there is no streak yet', () => {
-    const out = fallbackCompletion(result(), 0);
-    expect(out).not.toContain('STREAK');
-  });
-
-  it('shows an escalating streak banner in the fallback for longer streaks', () => {
-    const short = fallbackCompletion(result(), 3);
-    expect(short).toContain('STREAK 3 HARI');
-    const long = fallbackCompletion(result(), 30);
-    expect(long).toContain('STREAK 30 HARI');
-    expect(long).toContain('🔥🔥🔥'); // loudest tier
+  it('the fallback treats an anomaly as an unhealthy pattern, not a win', () => {
+    const longSleep = result({ mission: mission({ title: 'tidur', actual_duration_minutes: 15 * 60 + 11 }) });
+    const out = fallbackCompletion(longSleep);
+    expect(out).toContain('unhealthy pattern');
+    expect(out).not.toMatch(/great|amazing|impressive/i);
   });
 });

@@ -176,17 +176,39 @@ export class PlanService {
   }
 
   /**
-   * The block's planned length in minutes. Materialized blocks carry no duration
-   * of their own (the template stores only a time), so fall back to the source
-   * schedule's `grace_minutes` — which doubles as that block's planned window.
-   * Returns null for a one-off block with no stated duration. An edited/ad-hoc
-   * duration on the block always wins, keeping this adaptive.
+   * Plan-adherence context for the completion review, from a single schedule
+   * fetch:
+   * - `plannedMinutes`: the block's planned length. Materialized blocks carry no
+   *   duration of their own (the template stores only a time), so fall back to
+   *   the source schedule's `grace_minutes` — which doubles as that block's
+   *   planned window. An edited/ad-hoc duration on the block always wins, and
+   *   it's null for a one-off block with no stated duration.
+   * - `plannedStart`: the block's scheduled start as a local-frame timestamp
+   *   ('YYYY-MM-DDTHH:MM:SS'), for direct comparison against the mission's
+   *   `started_at`.
+   * - `graceMinutes`: the source schedule's lateness tolerance, or null for an
+   *   ad-hoc block (the caller applies a default).
    */
+  async planAdherenceForBlock(block: PlanBlock): Promise<{
+    plannedMinutes: number | null;
+    plannedStart: string;
+    graceMinutes: number | null;
+  }> {
+    let grace: number | null = null;
+    if (block.source_schedule_id) {
+      const schedules = await this.habitRepo.getActiveSchedules(block.user_id);
+      grace = schedules.find(s => s.id === block.source_schedule_id)?.grace_minutes ?? null;
+    }
+    return {
+      plannedMinutes: block.duration_minutes ?? grace,
+      plannedStart: `${block.plan_date}T${block.start_time}`,
+      graceMinutes: grace,
+    };
+  }
+
+  /** The block's planned length in minutes — see {@link planAdherenceForBlock}. */
   async plannedMinutesForBlock(block: PlanBlock): Promise<number | null> {
-    if (block.duration_minutes != null) return block.duration_minutes;
-    if (!block.source_schedule_id) return null;
-    const schedules = await this.habitRepo.getActiveSchedules(block.user_id);
-    return schedules.find(s => s.id === block.source_schedule_id)?.grace_minutes ?? null;
+    return (await this.planAdherenceForBlock(block)).plannedMinutes;
   }
 
   /** Parse a natural-language edit, resolve its target in today's plan, apply it. */

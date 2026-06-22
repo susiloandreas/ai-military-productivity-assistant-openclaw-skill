@@ -19,6 +19,17 @@ export interface MissionCompleteResult {
    * block window).
    */
   plannedMinutes?: number | null;
+  /**
+   * The matching block's scheduled start as a local-frame timestamp
+   * ('YYYY-MM-DDTHH:MM:SS'), so the cheer can review how late the start was.
+   * Null when no plan block matched.
+   */
+  plannedStart?: string | null;
+  /**
+   * The matching block's lateness tolerance (minutes) — its source schedule's
+   * `grace_minutes`. Null for an ad-hoc block (the cheer applies a default).
+   */
+  startGraceMinutes?: number | null;
 }
 
 export interface MissionStartResult {
@@ -78,19 +89,31 @@ export class MissionService {
   }
 
   /**
-   * Mark the matching day-plan block done and return its planned duration in
-   * minutes (block duration, else the source schedule's window) so the cheer can
-   * review actual-vs-plan. Swallows errors so it never blocks the reply; returns
-   * null when there's no plan service, no block matched, or no planned length.
+   * Mark the matching day-plan block done and return its plan-adherence context
+   * (planned duration, scheduled start, lateness grace) so the cheer can review
+   * actual-vs-plan on both duration AND start time. Swallows errors so it never
+   * blocks the reply; returns nulls when there's no plan service or no block
+   * matched.
    */
-  private async advancePlan(mission: Mission): Promise<number | null> {
-    if (!this.planService) return null;
+  private async advancePlan(mission: Mission): Promise<{
+    plannedMinutes: number | null;
+    plannedStart: string | null;
+    startGraceMinutes: number | null;
+  }> {
+    const none = { plannedMinutes: null, plannedStart: null, startGraceMinutes: null };
+    if (!this.planService) return none;
     try {
       const block = await this.planService.markDoneForMission(mission);
-      return block ? await this.planService.plannedMinutesForBlock(block) : null;
+      if (!block) return none;
+      const adherence = await this.planService.planAdherenceForBlock(block);
+      return {
+        plannedMinutes: adherence.plannedMinutes,
+        plannedStart: adherence.plannedStart,
+        startGraceMinutes: adherence.graceMinutes,
+      };
     } catch (err) {
       console.warn(`[Plan] failed to mark block done: ${(err as Error).message}`);
-      return null;
+      return none;
     }
   }
 
@@ -157,8 +180,8 @@ export class MissionService {
 
     const { goalProgress } = await this.advanceGoals(mission, actualDuration);
     await this.advanceStreaks(userId, completed.habit_type_id);
-    const plannedMinutes = await this.advancePlan(completed);
-    return { mission: completed, goalProgress, plannedMinutes };
+    const plan = await this.advancePlan(completed);
+    return { mission: completed, goalProgress, ...plan };
   }
 
   /**
@@ -362,8 +385,8 @@ export class MissionService {
 
     const { goalProgress } = await this.advanceGoals(updated, elapsed);
     await this.advanceStreaks(mission.user_id, updated.habit_type_id);
-    const plannedMinutes = await this.advancePlan(updated);
-    return { mission: updated, goalProgress, plannedMinutes };
+    const plan = await this.advancePlan(updated);
+    return { mission: updated, goalProgress, ...plan };
   }
 
   async getRecentCompleted(userId: string, days = 7): Promise<Mission[]> {

@@ -190,7 +190,13 @@ describe('PlanService edits', () => {
   });
 
   it('plannedMinutesForBlock uses the block duration when set', async () => {
+    habitRepo.getActiveSchedules.mockResolvedValue([makeSchedule({ id: 'sched-1' })]);
     const block = makeBlock({ duration_minutes: 45 });
+    expect(await service.plannedMinutesForBlock(block)).toBe(45);
+  });
+
+  it('plannedMinutesForBlock needs no schedule fetch for an ad-hoc block with a duration', async () => {
+    const block = makeBlock({ duration_minutes: 45, source_schedule_id: null });
     expect(await service.plannedMinutesForBlock(block)).toBe(45);
     expect(habitRepo.getActiveSchedules).not.toHaveBeenCalled();
   });
@@ -204,6 +210,22 @@ describe('PlanService edits', () => {
   it('plannedMinutesForBlock returns null for a one-off block with no duration', async () => {
     const block = makeBlock({ duration_minutes: null, source_schedule_id: null });
     expect(await service.plannedMinutesForBlock(block)).toBeNull();
+  });
+
+  it('planAdherenceForBlock exposes the scheduled start and the schedule grace', async () => {
+    habitRepo.getActiveSchedules.mockResolvedValue([makeSchedule({ id: 'sched-1', grace_minutes: 90 })]);
+    const block = makeBlock({ start_time: '06:00:00', plan_date: '2026-01-05' });
+    const a = await service.planAdherenceForBlock(block);
+    expect(a.plannedStart).toBe('2026-01-05T06:00:00');
+    expect(a.graceMinutes).toBe(90);
+  });
+
+  it('planAdherenceForBlock returns a null grace for an ad-hoc block', async () => {
+    const block = makeBlock({ duration_minutes: 45, source_schedule_id: null });
+    const a = await service.planAdherenceForBlock(block);
+    expect(a.graceMinutes).toBeNull();
+    expect(a.plannedMinutes).toBe(45);
+    expect(habitRepo.getActiveSchedules).not.toHaveBeenCalled();
   });
 
   it('applyEdit moves a resolved target block', async () => {

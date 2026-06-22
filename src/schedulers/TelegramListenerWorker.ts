@@ -116,7 +116,12 @@ async function handleText(text: string): Promise<void> {
           const streak = await streakCountFor(result.mission);
           await sendTelegramMessage(replyExpiryResolved(result, Math.random, streak));
           await sendTelegramMessage(
-            await composeCompletionCheer(result, streak, result.plannedMinutes)
+            await composeCompletionCheer(
+              result,
+              result.plannedMinutes,
+              result.plannedStart,
+              result.startGraceMinutes
+            )
           ).catch(() => null);
         } else {
           await sendTelegramMessage(replyExpiryResolved(result));
@@ -207,10 +212,15 @@ async function handleText(text: string): Promise<void> {
         if (!intent.notes) await missionService.requestNotes(result.mission.id);
         const streak = await streakCountFor(result.mission);
         await sendTelegramMessage(replyCompleted(result, Math.random, streak));
-        // Follow with an AI-generated motivational cheer that escalates with the streak,
-        // flipping to an honest review when actual duration blew past the planned block.
+        // Follow with an AI-generated coach review of the session — judging actual
+        // duration vs the planned block and the start vs the plan window.
         await sendTelegramMessage(
-          await composeCompletionCheer(result, streak, result.plannedMinutes)
+          await composeCompletionCheer(
+            result,
+            result.plannedMinutes,
+            result.plannedStart,
+            result.startGraceMinutes
+          )
         ).catch(() => null);
         console.log(`[Telegram Listener] Completed mission "${result.mission.title}"`);
         break;

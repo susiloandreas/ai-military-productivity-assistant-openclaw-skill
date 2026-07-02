@@ -19,7 +19,13 @@ const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 export const redisConnection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
-  retryStrategy: () => null, // Don't retry — just fail silently
+  // Reconnect with capped backoff. Returning null here (the old behaviour) meant
+  // the connection died permanently on the FIRST disconnect — a Redis restart,
+  // deploy, or reaped idle socket — which silently stopped the BullMQ ETA worker
+  // (its blocking connection never recovered) until the process was restarted.
+  retryStrategy: (times) => Math.min(times * 200, 5000),
+  // Reconnect when Redis reports it's in read-only / failover state.
+  reconnectOnError: () => true,
   enableReadyCheck: false,
   lazyConnect: true,
 });

@@ -22,8 +22,13 @@ import { DEFAULT_USER_ID, Mission } from '../types';
 const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 // Don't nag about held missions more than once every 2 hours.
 const HELD_REMINDER_INTERVAL_MIN = 120;
-// Re-ask "what did you do?" for an unanswered ETA-expired mission this often.
-const ETA_FOLLOWUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// How often the ETA backstop loop polls Postgres for a just-expired mission.
+// Kept tight so that if the precise BullMQ ETA worker is down, the follow-up
+// still lands within ~1 min of the deadline instead of up to 5 min late.
+const ETA_FOLLOWUP_INTERVAL_MS = 60 * 1000; // 1 minute
+// Minimum spacing between repeated "what did you do?" re-asks for a still-
+// unanswered mission — independent of the poll interval above, so tightening
+// the poll doesn't speed up the re-ask cadence.
 const ETA_FOLLOWUP_MIN = 5;
 
 const missionRepo = new MissionRepository();
@@ -149,8 +154,8 @@ async function sendEtaPrompt(mission: Mission): Promise<void> {
 }
 
 /**
- * Keeps after an ETA-expired mission until the user resolves it. Runs every 5
- * minutes, independent of the 15-minute idle cycle, so the follow-up cadence
+ * Keeps after an ETA-expired mission until the user resolves it. Runs every
+ * minute, independent of the 15-minute idle cycle, so the follow-up cadence
  * never speeds up the unrelated idle nudges.
  */
 async function etaFollowUp(): Promise<void> {
@@ -186,7 +191,7 @@ async function etaFollowUp(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log('[Idle Reminder] Worker started — idle check every 15 min, ETA follow-up every 5 min');
+  console.log('[Idle Reminder] Worker started — idle check every 15 min, ETA follow-up every 1 min');
 
   // Run both immediately on startup, then on their own intervals.
   await check().catch(err => console.error('[Idle Reminder] Check failed:', err));

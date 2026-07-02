@@ -28,6 +28,21 @@ export function formatBlock(title: string, sections: { label: string; lines: str
   return parts.join('\n');
 }
 
+/**
+ * Format a timestamp as local clock time "HH:MM" (24-hour) in the app timezone
+ * (process.env.TZ, defaulting to Asia/Jakarta). Used to show a mission's end time
+ * on completion.
+ */
+export function formatClockTime(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: process.env.TZ || 'Asia/Jakarta',
+  }).format(date);
+}
+
 export function formatProgress(current: number, target: number, unit: string): string {
   const pct = Math.min(100, Math.round((current / target) * 100));
   const filled = Math.round(pct / 10);

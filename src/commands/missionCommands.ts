@@ -1,6 +1,6 @@
 import { MissionService } from '../services/MissionService';
 import { ProgressResult } from '../services/GoalService';
-import { formatSuccess, formatError, formatStatus } from '../utils/formatter';
+import { formatSuccess, formatError, formatStatus, formatClockTime } from '../utils/formatter';
 import { formatMinutes } from '../utils/duration';
 
 /**
@@ -46,6 +46,9 @@ export async function handleMissionCommand(
           `Mission: ${mission.title}`,
           `Duration: ${formatMinutes(mission.actual_duration_minutes ?? 0)}`,
         ];
+        if (mission.completed_at) {
+          lines.push(`End Time: ${formatClockTime(mission.completed_at)}`);
+        }
         if (goalProgress) {
           lines.push(`Goal progress: +${goalProgress.progressLog.value_delta}min`);
           lines.push(`Total progress: ${goalProgress.totalProgress}min`);

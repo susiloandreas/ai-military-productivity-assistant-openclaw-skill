@@ -7,6 +7,7 @@
 import { Mission, HabitScheduleWithNames, PlanBlock } from '../types';
 import { MissionCompleteResult } from '../services/MissionService';
 import { formatMinutes } from '../utils/duration';
+import { formatClockTime } from '../utils/formatter';
 
 export type Rng = () => number;
 
@@ -83,6 +84,9 @@ export function replyCompleted(
   const lines = [`📌 <b>${mission.title}</b>`];
   if (mission.actual_duration_minutes != null) {
     lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
+  }
+  if (mission.completed_at) {
+    lines.push(`🏁 Selesai pukul: <b>${formatClockTime(mission.completed_at)}</b>`);
   }
   if (streakCount > 0) lines.push(`🔥 Streak: <b>${streakCount} hari beruntun</b>`);
   if (mission.notes) lines.push(`📝 ${mission.notes}`);

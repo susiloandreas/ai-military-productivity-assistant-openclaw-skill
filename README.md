@@ -242,47 +242,47 @@ src/
 | `REDIS_URL` | Redis connection string (default: `redis://localhost:6379`) |
 | `IRONCLAW_SERVICE_URL` | Public URL for OpenClaw automations |
 | `PORT` | HTTP port (default: `3000`) |
-| `NODE_ENV` | `production` for Railway |
+| `NODE_ENV` | `production` in production |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from [@BotFather](https://t.me/botfather) |
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID — get it from [@userinfobot](https://t.me/userinfobot) |
 | `TZ` | Timezone for habit schedule windows (e.g. `Asia/Jakarta`). The idle worker evaluates "morning 06:00" in this zone |
 
-## Deployment to Railway
+## Deployment (Docker Compose)
 
-### Prerequisites
+Production runs the full stack via `docker-compose.yml`. Beyond `app` (the HTTP
+server) and its `postgres` + `redis` dependencies, it starts four long-running
+workers — **all required** for proactive behaviour:
 
-- [Railway account](https://railway.app)
-- PostgreSQL + Redis provisioned in Railway
-- GitHub repo connected to Railway
+| Service | Role |
+|---|---|
+| `app` | HTTP server (`/commands`, `/notifications/*`, `/health`) |
+| `telegram-listener` | Consumes inbound Telegram messages (NLP mission commands) |
+| `eta-worker` | Fires the ETA-expiry follow-up ("what did you do?") via BullMQ |
+| `idle-reminder` | Idle/habit nudges + the Postgres-based ETA follow-up backstop |
+| `coaching` | Daily coaching briefs at 07:00 / 13:00 / 23:00 |
 
 ### Steps
 
-1. **Connect repository** — Link this GitHub repo to your Railway project
-
-2. **Create services**
-   - PostgreSQL plugin (copy connection string to `DATABASE_URL`)
-   - Redis plugin (copy connection string to `REDIS_URL`)
-
-3. **Set environment variables** in Railway project settings:
+1. **Set environment variables** in `.env` (loaded by every service; see below).
+   The Telegram vars must be present for the workers, or proactive reminders
+   silently fail to send.
    ```
    NODE_ENV=production
-   IRONCLAW_SERVICE_URL=https://<your-railway-domain>.up.railway.app
-   PORT=3000
    TELEGRAM_BOT_TOKEN=<your-bot-token>
    TELEGRAM_CHAT_ID=<your-chat-id>
+   TZ=Asia/Jakarta
    ```
 
-4. **Deploy** — Push to `main` branch or manually trigger from Railway dashboard
-   - Procfile runs migrations automatically
-   - Builds TypeScript
-   - Starts service
-
-5. **Verify**
+2. **Build & start the full stack** (migrations run on `app` startup):
    ```bash
-   curl https://<your-railway-domain>.up.railway.app/health
+   docker compose up -d --build
    ```
 
-6. **Configure OpenClaw** — Update `IRONCLAW_SERVICE_URL` in OpenClaw to point to Railway URL
+3. **Verify all workers are up** (not just `app`):
+   ```bash
+   docker compose ps          # every service should read "Up"
+   curl http://localhost:3000/health
+   ```
 
 ### Health Check & Automations
 

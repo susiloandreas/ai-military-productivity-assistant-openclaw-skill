@@ -144,6 +144,9 @@ export function replyExpiryResolved(
   if (done && mission.actual_duration_minutes != null) {
     lines.push(`⏱️ Durasi: <b>${formatMinutes(mission.actual_duration_minutes)}</b>`);
   }
+  if (done && mission.completed_at) {
+    lines.push(`🏁 Selesai pukul: <b>${formatClockTime(mission.completed_at)}</b>`);
+  }
   if (done && streakCount > 0) lines.push(`🔥 Streak: <b>${streakCount} hari beruntun</b>`);
   if (mission.notes) lines.push(`📝 ${mission.notes}`);
   if (done && goalProgress) {

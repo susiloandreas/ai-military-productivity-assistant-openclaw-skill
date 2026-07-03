@@ -6,6 +6,7 @@ services:
     env_file:
       - .env
     environment:
+      SERVICE_ROLE: web
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
@@ -22,10 +23,10 @@ services:
 
   eta-worker:
     build: .
-    command: ["node", "dist/schedulers/EtaExpiryWorker.js"]
     env_file:
       - .env
     environment:
+      SERVICE_ROLE: eta-worker
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
@@ -40,10 +41,10 @@ services:
 
   idle-reminder:
     build: .
-    command: ["node", "dist/schedulers/IdleReminderWorker.js"]
     env_file:
       - .env
     environment:
+      SERVICE_ROLE: idle-reminder
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
@@ -58,10 +59,10 @@ services:
 
   coaching:
     build: .
-    command: ["node", "dist/schedulers/CoachingWorker.js"]
     env_file:
       - .env
     environment:
+      SERVICE_ROLE: coaching
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
@@ -76,10 +77,10 @@ services:
 
   telegram-listener:
     build: .
-    command: ["node", "dist/schedulers/TelegramListenerWorker.js"]
     env_file:
       - .env
     environment:
+      SERVICE_ROLE: telegram-listener
       DATABASE_URL: postgres://ironclaw:ironclaw@postgres:5432/ironclaw
       REDIS_URL: redis://redis:6379
       NODE_ENV: production

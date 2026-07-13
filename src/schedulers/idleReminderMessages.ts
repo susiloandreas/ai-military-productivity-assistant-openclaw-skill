@@ -125,11 +125,24 @@ function hhmm(t: string): string {
   return t.slice(0, 5);
 }
 
+// Early-morning window in which yesterday's evening habits are still checked —
+// mirrors findSeharusnyaHabit's cross-midnight cutoff below.
+const EARLY_MORNING_CUTOFF_MIN = 8 * 60;
+// Only habits scheduled this late are eligible for the cross-midnight check —
+// keeps an ordinary morning habit from being re-flagged as "yesterday's" all
+// day once its own window has simply closed.
+const EVENING_HABIT_START_MIN = 18 * 60;
+
 /**
  * From the active schedules, pick the habits that are currently DUE (inside the
  * grace window) or MISSED (window has closed) for today and have NOT yet been
  * logged. Today's weekday and the current time are read from `now` in the
  * process's local timezone — set TZ to the user's zone for correct windows.
+ *
+ * An evening habit (e.g. Tidur at 22:00) whose window opened yesterday is also
+ * checked before 08:00 — otherwise, right after midnight, "now" wraps back to
+ * a small minutes-since-midnight value and looks earlier than the habit's own
+ * start time, so it reads as "not due yet" instead of hours overdue.
  *
  * Missed habits are listed before due ones; within each, earliest-scheduled first.
  */
@@ -144,18 +157,34 @@ export function selectDueHabits(
   const due: DueHabit[] = [];
 
   for (const schedule of schedules) {
-    if (!schedule.days_of_week.includes(weekday)) continue; // not scheduled today
     if (loggedTypeIds.has(schedule.habit_type_id)) continue; // already done today
 
     const start = timeToMinutes(schedule.expected_at);
-    const end = start + schedule.grace_minutes;
+    const grace = schedule.grace_minutes;
 
-    if (nowMin < start) continue; // not due yet
+    if (schedule.days_of_week.includes(weekday) && nowMin >= start) {
+      const end = start + grace;
+      due.push(
+        nowMin <= end
+          ? { schedule, status: 'due', minutesLate: 0, minutesLeft: end - nowMin }
+          : { schedule, status: 'missed', minutesLate: nowMin - end, minutesLeft: 0 }
+      );
+      continue;
+    }
 
-    if (nowMin <= end) {
-      due.push({ schedule, status: 'due', minutesLate: 0, minutesLeft: end - nowMin });
-    } else {
-      due.push({ schedule, status: 'missed', minutesLate: nowMin - end, minutesLeft: 0 });
+    // Cross-midnight: today's occurrence hasn't started yet by clock time, but
+    // if it's a late-evening habit and we're still in the early-morning window,
+    // check whether yesterday's occurrence is still open or has just closed.
+    if (nowMin < EARLY_MORNING_CUTOFF_MIN && start >= EVENING_HABIT_START_MIN) {
+      const yesterdayWeekday = (weekday + 6) % 7;
+      if (schedule.days_of_week.includes(yesterdayWeekday)) {
+        const elapsed = 24 * 60 - start + nowMin;
+        due.push(
+          elapsed <= grace
+            ? { schedule, status: 'due', minutesLate: 0, minutesLeft: grace - elapsed }
+            : { schedule, status: 'missed', minutesLate: elapsed - grace, minutesLeft: 0 }
+        );
+      }
     }
   }
 
@@ -308,4 +337,16 @@ export function buildGenericIdleMessage(
   const paragraphs = base.split('\n\n');
   paragraphs.splice(paragraphs.length - 1, 0, hint);
   return paragraphs.join('\n\n');
+}
+
+// ── Habit conflict when starting a mission ───────────────────────────────────
+
+/** Find habits that are due or missed right now when starting a new mission. */
+export function findConflictingHabits(
+  schedules: HabitScheduleWithNames[],
+  loggedTypeIds: Set<string>,
+  now: Date = new Date()
+): DueHabit[] {
+  const due = selectDueHabits(schedules, loggedTypeIds, now);
+  return due;
 }

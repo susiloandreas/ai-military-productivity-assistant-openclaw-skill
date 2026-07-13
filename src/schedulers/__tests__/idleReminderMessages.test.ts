@@ -77,6 +77,51 @@ describe('selectDueHabits', () => {
       'reading:due',
     ]);
   });
+
+  describe('cross-midnight habits', () => {
+    // Scheduled 22:00 Sunday (day 0), 90 min grace (window 22:00–23:30 Sunday).
+    const sleep = (overrides: Partial<HabitScheduleWithNames> = {}) =>
+      schedule({
+        id: 'sleep',
+        habit_type_id: 'sleep',
+        expected_at: '22:00:00',
+        habit_type_name: 'Tidur Malam',
+        days_of_week: [0, 1, 2, 3, 4, 5, 6],
+        ...overrides,
+      });
+
+    it('flags an evening habit as missed early the next morning', () => {
+      // 01:51 Monday: window closed at 23:30 Sunday, ~141 min ago.
+      const due = selectDueHabits([sleep()], NONE, MONDAY(1, 51));
+      expect(due).toHaveLength(1);
+      expect(due[0].status).toBe('missed');
+      expect(due[0].minutesLate).toBe(141);
+    });
+
+    it('flags an evening habit as still due while its (midnight-spanning) grace window is open', () => {
+      // Window 22:00 Sunday–01:00 Monday (180 min grace). 00:15 Monday = 135 min in.
+      const due = selectDueHabits([sleep({ grace_minutes: 180 })], NONE, MONDAY(0, 15));
+      expect(due).toHaveLength(1);
+      expect(due[0].status).toBe('due');
+      expect(due[0].minutesLeft).toBe(45);
+    });
+
+    it('stops checking yesterday once past the early-morning cutoff', () => {
+      expect(selectDueHabits([sleep()], NONE, MONDAY(8, 1))).toHaveLength(0);
+    });
+
+    it('ignores an ordinary morning habit for the cross-midnight check', () => {
+      // schedule() defaults to 06:00 — not late enough to be treated as an evening habit.
+      expect(selectDueHabits([schedule({})], NONE, MONDAY(1))).toHaveLength(0);
+    });
+
+    it('does not double-count once today\'s own occurrence has started', () => {
+      // 22:30 Monday: today's 22:00 occurrence is the relevant one, not yesterday's.
+      const due = selectDueHabits([sleep()], NONE, MONDAY(22, 30));
+      expect(due).toHaveLength(1);
+      expect(due[0].status).toBe('due');
+    });
+  });
 });
 
 describe('buildHabitLossAversionMessage', () => {

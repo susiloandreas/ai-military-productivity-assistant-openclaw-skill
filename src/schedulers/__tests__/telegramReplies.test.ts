@@ -7,7 +7,7 @@ import {
   replyStatus,
   replyEtaExpiredAskNotes,
   replyNotesSaved,
-  replyExpiryNeedsBoth,
+  replyExpiryNeedsStatus,
   replyExpiryResolved,
   replyHelp,
   replyHabitsToday,
@@ -149,8 +149,8 @@ describe('telegramReplies', () => {
     expect(replyNotesSaved(mission({ title: 'Refactor' }), firstRng)).toContain('Refactor');
   });
 
-  it('re-prompts when the expiry reply lacks status or notes', () => {
-    expect(replyExpiryNeedsBoth()).toMatch(/status/i);
+  it('re-prompts when the expiry reply carries no recognizable status', () => {
+    expect(replyExpiryNeedsStatus()).toMatch(/status/i);
   });
 
   it('confirms an expired mission resolved as completed vs not completed', () => {
@@ -167,6 +167,15 @@ describe('telegramReplies', () => {
     );
     expect(notDone).toContain('TIDAK SELESAI');
     expect(notDone).toContain('ran out');
+  });
+
+  it('asks for notes when an expired mission is resolved with a bare status ("selesai" alone)', () => {
+    const out = replyExpiryResolved(
+      { mission: mission({ title: 'Refactor', status: 'completed', actual_duration_minutes: 30, notes: '' }), goalProgress: null },
+      firstRng
+    );
+    expect(out).toContain('SELESAI');
+    expect(out).toMatch(/apa yang kamu kerjakan|selesaikan|hasilnya/i); // one of the ASK_NOTES variants
   });
 
   it('points at the next scheduled block, or nothing when the day is clear', () => {

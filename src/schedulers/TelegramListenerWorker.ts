@@ -20,7 +20,7 @@ import {
   replyNeedExtendDuration,
   replyStatus,
   replyNotesSaved,
-  replyExpiryNeedsBoth,
+  replyExpiryNeedsStatus,
   replyExpiryResolved,
   replyHelp,
   replyHabitsToday,
@@ -167,13 +167,18 @@ async function executeAction(action: Action, text: string): Promise<void> {
       return;
     }
 
-    case 'expiry_needs_both':
-      // Re-prompt until both a status AND notes are provided.
-      await sendTelegramMessage(replyExpiryNeedsBoth());
+    case 'expiry_needs_status':
+      // Re-prompt until a recognizable status (selesai/belum) is given.
+      await sendTelegramMessage(replyExpiryNeedsStatus());
       return;
 
     case 'resolve_expired': {
       const result = await missionService.resolveExpiredMission(action.missionId, action.completed, action.notes);
+      // A bare status ("selesai" with no notes) resolves the mission right away
+      // but re-opens the awaiting-notes prompt — same deferred-notes pattern as
+      // a normal completion — so the next free-text reply is captured.
+      const notesPending = action.notes.trim() === '';
+      if (notesPending) await missionService.requestNotes(result.mission.id);
       // Follow up with an AI message tuned to the outcome: a motivational cheer
       // on success, or a recovery nudge to start the next step on failure.
       if (result.mission.status === 'completed') {
@@ -182,7 +187,10 @@ async function executeAction(action: Action, text: string): Promise<void> {
         await sendTelegramMessage(
           await composeCompletionCheer(result, result.plannedMinutes, result.plannedStart, result.startGraceMinutes)
         ).catch(() => null);
-        await sendNextUpNudge();
+        // Notes came inline, so this is already terminal — nudge toward what's
+        // next. When notes are still pending, the nudge fires once they land
+        // (see the record_notes case) so it isn't sent twice.
+        if (!notesPending) await sendNextUpNudge();
       } else {
         await sendTelegramMessage(replyExpiryResolved(result));
         await sendTelegramMessage(await composeNextStepNudge(result.mission)).catch(() => null);

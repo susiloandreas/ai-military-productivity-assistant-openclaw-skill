@@ -82,12 +82,18 @@ describe('route — ETA-expired mission awaiting resolution', () => {
     });
   });
 
-  it('re-asks for both when a status is given without notes', () => {
-    expect(route('selesai', null, expired).type).toBe('expiry_needs_both');
+  it('resolves immediately on a bare status with no notes — notes can follow separately', () => {
+    const action = route('selesai', null, expired);
+    expect(action).toEqual({ type: 'resolve_expired', missionId: 'm1', completed: true, notes: '' });
   });
 
-  it('re-asks for both on free text carrying no status at all', () => {
-    expect(route('masih di jalan', null, expired).type).toBe('expiry_needs_both');
+  it('resolves as not-completed on a bare "belum" too', () => {
+    const action = route('belum', null, expired);
+    expect(action).toEqual({ type: 'resolve_expired', missionId: 'm1', completed: false, notes: '' });
+  });
+
+  it('asks for a status on free text carrying no recognizable status at all', () => {
+    expect(route('masih di jalan', null, expired).type).toBe('expiry_needs_status');
   });
 
   it('revives the mission when "perpanjang <durasi>" is sent', () => {

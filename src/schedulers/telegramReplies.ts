@@ -123,22 +123,22 @@ const ETA_EXPIRED_HEADERS = [
 ];
 
 const RESOLVE_INSTRUCTION =
-  'Lapor sekarang: <b>status + catatan</b> dalam satu pesan.\n' +
-  '✅ <i>selesai, &lt;apa yang kamu kerjakan&gt;</i>\n' +
-  '❌ <i>belum, &lt;kenapa / sampai mana&gt;</i>';
+  'Lapor status-nya (catatan boleh nyusul kalau belum sempat):\n' +
+  '✅ <i>selesai</i> — atau langsung <i>selesai, &lt;apa yang kamu kerjakan&gt;</i>\n' +
+  '❌ <i>belum</i> — atau langsung <i>belum, &lt;kenapa / sampai mana&gt;</i>';
 
 /**
  * Sent by the ETA worker when a mission's timer expires — the user MUST reply
- * with a completion status (done / not done) AND notes.
+ * with a completion status (done / not done); notes can follow separately.
  */
 export function replyEtaExpiredAskNotes(mission: Mission, rng: Rng = Math.random): string {
   const eta = mission.eta_minutes != null ? ` (ETA ${formatMinutes(mission.eta_minutes)})` : '';
   return `${pick(ETA_EXPIRED_HEADERS, rng)}\n\n📌 <b>${mission.title}</b>${eta}\n\n${RESOLVE_INSTRUCTION}`;
 }
 
-/** Re-prompt when the expiry reply is missing the status and/or the notes. */
-export function replyExpiryNeedsBoth(): string {
-  return `⚠️ Butuh <b>dua-duanya</b>: status DAN catatan.\n\n${RESOLVE_INSTRUCTION}`;
+/** Re-prompt when the expiry reply carries no recognizable status at all. */
+export function replyExpiryNeedsStatus(): string {
+  return `⚠️ Butuh <b>status</b>-nya dulu: selesai atau belum?\n\n${RESOLVE_INSTRUCTION}`;
 }
 
 /** Confirmation after an expired mission is resolved as completed / not completed. */
@@ -171,7 +171,10 @@ export function replyExpiryResolved(
   const closer = done
     ? pick(COMPLETED_CLOSERS, rng)
     : 'Tidak apa gagal sekali — yang fatal itu berhenti. Tentukan langkah berikutnya.';
-  return `${header}\n\n${lines.join('\n')}\n\n${closer}`;
+  // Status was reported without notes ("selesai" alone) — ask for them now;
+  // the next free-text reply is captured, same as a normal completion.
+  const tail = mission.notes ? '' : `\n\n${pick(ASK_NOTES, rng)}`;
+  return `${header}\n\n${lines.join('\n')}\n\n${closer}${tail}`;
 }
 
 const NOTES_SAVED = [

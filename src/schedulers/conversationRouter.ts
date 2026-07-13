@@ -27,9 +27,14 @@ export interface PendingMission {
 export type Action =
   /** Bare "ya"/"gas"/etc. confirms a mission held back by a habit conflict. */
   | { type: 'confirm_pending'; pending: PendingMission }
-  /** ETA-expired reply named a status but no notes (or nothing recognizable) — re-ask for both. */
-  | { type: 'expiry_needs_both' }
-  /** ETA-expired reply carried both a status and notes — close it out. */
+  /** ETA-expired reply carried no recognizable status at all — ask for one. */
+  | { type: 'expiry_needs_status' }
+  /**
+   * ETA-expired reply named a status — close it out. Notes are optional here:
+   * when the reply is bare ("selesai" with no notes), `notes` is '' and the
+   * executor re-opens the awaiting-notes prompt so the next free-text message
+   * is captured, same as a normal completion.
+   */
   | { type: 'resolve_expired'; missionId: string; completed: boolean; notes: string }
   /** "perpanjang <durasi>" while ETA-expired, with a duration given. */
   | { type: 'extend_expired'; missionId: string; extendStr: string }
@@ -70,7 +75,6 @@ export function route(
     if (awaitingMission.status === 'eta_expired') {
       const { status, notes } = parseExpiryStatusReply(text);
       if (status) {
-        if (!notes) return { type: 'expiry_needs_both' };
         return {
           type: 'resolve_expired',
           missionId: awaitingMission.id,
@@ -83,7 +87,7 @@ export function route(
           ? { type: 'extend_expired', missionId: awaitingMission.id, extendStr: intent.extendStr }
           : { type: 'needs_extend_duration' };
       }
-      if (!intent) return { type: 'expiry_needs_both' };
+      if (!intent) return { type: 'expiry_needs_status' };
       return { type: 'expiry_command', missionId: awaitingMission.id, intent };
     }
 

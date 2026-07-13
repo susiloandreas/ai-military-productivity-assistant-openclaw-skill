@@ -57,6 +57,19 @@ export function nearestOpenBlock(blocks: PlanBlock[], now: Date): PlanBlock | nu
   );
 }
 
+/**
+ * The next still-open block starting after `now` (earliest first) — drives the
+ * "what's next" nudge after a mission closes, so the operator is pointed at the
+ * next scheduled task instead of going idle. Null once nothing is left today.
+ */
+export function nextUpcomingBlock(blocks: PlanBlock[], now: Date): PlanBlock | null {
+  const n = nowMinutes(now);
+  const upcoming = blocks
+    .filter(b => OPEN_STATUSES.includes(b.status) && timeToMinutes(b.start_time) > n)
+    .sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+  return upcoming[0] ?? null;
+}
+
 // Completion window: a log may land a little before the block, and up to its
 // duration (or a default, since materialized blocks carry none) after. The
 // bounds stop a far-off log from marking a block done.

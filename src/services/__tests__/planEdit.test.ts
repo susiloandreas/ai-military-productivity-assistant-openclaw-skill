@@ -3,6 +3,7 @@ import {
   minutesToClock,
   resolveTargetBlock,
   nearestOpenBlock,
+  nextUpcomingBlock,
   matchBlockForCompletion,
   planBlocksToSchedules,
   computeDayOutcomes,
@@ -88,6 +89,32 @@ describe('nearestOpenBlock', () => {
       makeBlock({ id: 'noon-done', start_time: '12:00:00', status: 'done' }),
     ];
     expect(nearestOpenBlock(blocks, new Date(2026, 0, 5, 17, 0))?.id).toBe('evening');
+  });
+});
+
+describe('nextUpcomingBlock', () => {
+  it('picks the earliest still-open block after now', () => {
+    const blocks = [
+      makeBlock({ id: 'evening', start_time: '18:00:00' }),
+      makeBlock({ id: 'afternoon', start_time: '14:00:00' }),
+      makeBlock({ id: 'morning-done', start_time: '06:00:00', status: 'done' }),
+    ];
+    expect(nextUpcomingBlock(blocks, new Date(2026, 0, 5, 10, 0))?.id).toBe('afternoon');
+  });
+
+  it('ignores blocks that already started', () => {
+    const blocks = [makeBlock({ id: 'morning', start_time: '06:00:00' })];
+    expect(nextUpcomingBlock(blocks, new Date(2026, 0, 5, 10, 0))).toBeNull();
+  });
+
+  it('returns null when nothing is left today', () => {
+    const blocks = [makeBlock({ id: 'done', start_time: '18:00:00', status: 'done' })];
+    expect(nextUpcomingBlock(blocks, new Date(2026, 0, 5, 10, 0))).toBeNull();
+  });
+
+  it('includes moved blocks at their new time', () => {
+    const blocks = [makeBlock({ id: 'moved', start_time: '20:00:00', status: 'moved' })];
+    expect(nextUpcomingBlock(blocks, new Date(2026, 0, 5, 10, 0))?.id).toBe('moved');
   });
 });
 

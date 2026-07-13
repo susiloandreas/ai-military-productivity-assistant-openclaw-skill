@@ -14,8 +14,10 @@ import {
   summarizeTodayHabits,
   replyAbortNeedsTarget,
   replyError,
+  replyNextUp,
 } from '../telegramReplies';
-import { Mission, HabitScheduleWithNames } from '../../types';
+import { Mission, HabitScheduleWithNames, PlanBlock } from '../../types';
+import { formatClockTime } from '../../utils/formatter';
 
 // Deterministic rng → always picks the first variant in every copy pool.
 const firstRng = () => 0;
@@ -37,6 +39,25 @@ function habitSchedule(overrides: Partial<HabitScheduleWithNames> = {}): HabitSc
     category_name: 'Fisik',
     ...overrides,
   } as HabitScheduleWithNames;
+}
+
+function planBlock(overrides: Partial<PlanBlock> = {}): PlanBlock {
+  return {
+    id: 'b1',
+    user_id: 'u1',
+    plan_date: '2026-06-08',
+    habit_type_id: 'type-1',
+    title: 'English writing',
+    start_time: '14:00:00',
+    duration_minutes: 30,
+    hardness: 'soft',
+    status: 'planned',
+    source_schedule_id: null,
+    completed_mission_id: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  } as PlanBlock;
 }
 
 function mission(overrides: Partial<Mission> = {}): Mission {
@@ -70,6 +91,19 @@ describe('telegramReplies', () => {
     const withCat = replyStarted(mission({ habit_category_id: 'c1' }), 'tennis', null, firstRng);
     expect(withCat).toContain('tennis');
     expect(replyStarted(mission(), null, null, firstRng)).not.toContain('Kategori');
+  });
+
+  it('shows the projected end time when starting a mission with an ETA', () => {
+    const startedAt = MONDAY(10, 0);
+    const expectedEnd = formatClockTime(new Date(startedAt.getTime() + 60 * 60000));
+    const out = replyStarted(mission({ eta_minutes: 60, started_at: startedAt }), null, null, firstRng);
+    expect(out).toContain('Estimasi selesai');
+    expect(out).toContain(expectedEnd);
+  });
+
+  it('omits the end time when there is no ETA', () => {
+    const out = replyStarted(mission({ eta_minutes: null }), null, null, firstRng);
+    expect(out).not.toContain('Estimasi selesai');
   });
 
   it('reminds about a held mission on start', () => {
@@ -135,9 +169,21 @@ describe('telegramReplies', () => {
     expect(notDone).toContain('ran out');
   });
 
+  it('points at the next scheduled block, or nothing when the day is clear', () => {
+    const out = replyNextUp(planBlock({ title: 'English writing', start_time: '14:00:00' }), firstRng);
+    expect(out).toContain('English writing');
+    expect(out).toContain('14:00');
+    expect(replyNextUp(null, firstRng)).toBeNull();
+  });
+
   it('renders abort and extend replies', () => {
     expect(replyAborted(mission(), firstRng)).toContain('Coding');
     expect(replyExtended(mission({ eta_minutes: 45 }), firstRng)).toContain('45m');
+    const startedAt = MONDAY(10, 0);
+    const expectedEnd = formatClockTime(new Date(startedAt.getTime() + 45 * 60000));
+    expect(
+      replyExtended(mission({ eta_minutes: 45, started_at: startedAt }), firstRng)
+    ).toContain(expectedEnd);
     expect(replyNeedExtendDuration(firstRng)).toMatch(/menit|jam|m/);
   });
 

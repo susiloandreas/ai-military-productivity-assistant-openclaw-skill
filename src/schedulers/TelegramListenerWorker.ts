@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { getTelegramUpdates, sendTelegramMessage } from '../utils/telegram';
-import { parseIntent, parseExpiryStatusReply } from '../nlp/missionParser';
-import { parsePlanEdit } from '../nlp/planParser';
+import { ParsedIntent } from '../nlp/missionParser';
+import { PlanEditIntent } from '../nlp/planParser';
+import { route, Action, PendingMission } from './conversationRouter';
 import { MissionRepository } from '../repositories/MissionRepository';
 import { GoalRepository } from '../repositories/GoalRepository';
 import { HabitRepository } from '../repositories/HabitRepository';
@@ -27,13 +28,20 @@ import {
   replyError,
   replyPlan,
   replyPlanDraft,
+  replyConflictReminder,
+  replyNextUp,
 } from './telegramReplies';
+import {
+  findConflictingHabits,
+} from './idleReminderMessages';
+import { nextUpcomingBlock } from '../services/planEdit';
 import { AbortNeedsTargetError } from '../services/MissionService';
 import { composeCoaching } from './composeCoaching';
 import { composeNextStepNudge } from './composeNextStep';
 import { composeCompletionCheer } from './composeCompletionCheer';
 import { slotForHour } from './coachingContext';
 import { DEFAULT_USER_ID } from '../types';
+import { redisConnection } from '../db/connection';
 
 /** Local midnight for "logged today" lookups. */
 function startOfToday(now: Date): Date {
@@ -57,6 +65,17 @@ async function streakCountFor(mission: { habit_type_id: string | null }): Promis
   }
 }
 
+/**
+ * Nudge toward the next scheduled block once a mission closes, so the operator
+ * flows straight into it instead of going idle until the 15-min idle worker
+ * picks them up. Silent when nothing is left on today's plan.
+ */
+async function sendNextUpNudge(now: Date = new Date()): Promise<void> {
+  const blocks = await planService.getTodayPlan(DEFAULT_USER_ID, now);
+  const nudge = replyNextUp(nextUpcomingBlock(blocks, now));
+  if (nudge) await sendTelegramMessage(nudge).catch(() => null);
+}
+
 // ── Dependency wiring (mirrors server.ts) ────────────────────────────────────
 const missionRepo = new MissionRepository();
 const goalRepo = new GoalRepository();
@@ -77,6 +96,8 @@ const missionService = new MissionService(
 
 const POLL_TIMEOUT_SEC = 30;
 const ERROR_BACKOFF_MS = 5000;
+const PENDING_MISSION_KEY = 'pending-mission-confirmation';
+const PENDING_MISSION_TTL = 3600; // 1 hour
 
 /** Only act on messages from the operator's own chat, when one is configured. */
 function isAuthorizedChat(chatId: number | undefined): boolean {
@@ -85,113 +106,195 @@ function isAuthorizedChat(chatId: number | undefined): boolean {
   return String(chatId) === String(allowed);
 }
 
-async function handleText(text: string): Promise<void> {
-  const intent = parseIntent(text);
+/** Store a pending mission awaiting user confirmation. */
+async function storePendingMission(userId: string, mission: PendingMission): Promise<void> {
+  const key = `${PENDING_MISSION_KEY}:${userId}`;
+  await redisConnection.setex(key, PENDING_MISSION_TTL, JSON.stringify(mission));
+}
 
-  // A mission is waiting for a "what did you do?" reply (after completion or ETA
-  // expiry). A non-command message is captured as its notes; a command means the
-  // user moved on, so drop the pending prompt and handle the command.
-  const awaiting = await missionService.getMissionAwaitingNotes(DEFAULT_USER_ID);
-  if (awaiting) {
-    // An ETA-expired mission must be resolved before anything else. A status reply
-    // ("selesai/belum, <notes>") resolves it; "perpanjang <durasi>" revives it with
-    // more time. Both take precedence over generic intent parsing — otherwise
-    // "selesai, ..." is mistaken for a complete command and "perpanjang" is routed
-    // to a (failing) active-mission extend, which would also orphan this prompt.
-    if (awaiting.status === 'eta_expired') {
-      const { status, notes } = parseExpiryStatusReply(text);
-      if (status) {
-        if (!notes) {
-          await sendTelegramMessage(replyExpiryNeedsBoth());
-          return; // keep awaiting until both status AND notes are provided
-        }
-        const result = await missionService.resolveExpiredMission(
-          awaiting.id,
-          status === 'completed',
-          notes
+/**
+ * Peek at a pending mission confirmation without consuming it — `handleText`
+ * reads this on every message just to feed the router, so an unrelated reply
+ * (the user typing something else while a conflict prompt sits unanswered)
+ * must leave it intact for a later "ya".
+ */
+async function getPendingMission(userId: string): Promise<PendingMission | null> {
+  const key = `${PENDING_MISSION_KEY}:${userId}`;
+  const data = await redisConnection.get(key);
+  return data ? JSON.parse(data) : null;
+}
+
+/** Consume a pending mission confirmation once it's actually been acted on. */
+async function clearPendingMission(userId: string): Promise<void> {
+  await redisConnection.del(`${PENDING_MISSION_KEY}:${userId}`);
+}
+
+/**
+ * Fetch the two pieces of live conversation state, route the message through
+ * the pure decision table, then execute whatever it decided. All the "what
+ * does this message mean right now" branching lives in `route()` — this is
+ * just wiring + I/O.
+ */
+async function handleText(text: string): Promise<void> {
+  const [pending, awaiting] = await Promise.all([
+    getPendingMission(DEFAULT_USER_ID),
+    missionService.getMissionAwaitingNotes(DEFAULT_USER_ID),
+  ]);
+  await executeAction(route(text, pending, awaiting), text);
+}
+
+async function executeAction(action: Action, text: string): Promise<void> {
+  switch (action.type) {
+    case 'confirm_pending': {
+      await clearPendingMission(DEFAULT_USER_ID);
+      try {
+        const { mission, heldMission } = await missionService.start(
+          DEFAULT_USER_ID,
+          action.pending.title,
+          action.pending.etaStr,
+          action.pending.categoryName
         );
-        // Follow up with an AI message tuned to the outcome: a motivational cheer
-        // on success, or a recovery nudge to start the next step on failure.
-        if (result.mission.status === 'completed') {
-          const streak = await streakCountFor(result.mission);
-          await sendTelegramMessage(replyExpiryResolved(result, Math.random, streak));
-          await sendTelegramMessage(
-            await composeCompletionCheer(
-              result,
-              result.plannedMinutes,
-              result.plannedStart,
-              result.startGraceMinutes
-            )
-          ).catch(() => null);
-        } else {
-          await sendTelegramMessage(replyExpiryResolved(result));
-          await sendTelegramMessage(await composeNextStepNudge(result.mission)).catch(() => null);
-        }
-        console.log(`[Telegram Listener] Resolved expired "${result.mission.title}" as ${result.mission.status}`);
-        return;
+        await sendTelegramMessage(replyStarted(mission, action.pending.categoryName, heldMission));
+        console.log(
+          `[Telegram Listener] Confirmed and started mission "${mission.title}"` +
+            (heldMission ? ` (held "${heldMission.title}")` : '')
+        );
+      } catch (err) {
+        const message = (err as Error).message;
+        console.warn(`[Telegram Listener] Failed to start confirmed mission: ${message}`);
+        await sendTelegramMessage(replyError(message)).catch(() => null);
       }
-      if (intent?.kind === 'extend') {
-        if (!intent.extendStr) {
-          await sendTelegramMessage(replyNeedExtendDuration());
-          return;
-        }
-        const mission = await missionService.extendExpiredMission(awaiting.id, intent.extendStr);
-        await sendTelegramMessage(replyExtended(mission));
-        console.log(`[Telegram Listener] Revived expired "${mission.title}" with more time`);
-        return;
+      return;
+    }
+
+    case 'expiry_needs_both':
+      // Re-prompt until both a status AND notes are provided.
+      await sendTelegramMessage(replyExpiryNeedsBoth());
+      return;
+
+    case 'resolve_expired': {
+      const result = await missionService.resolveExpiredMission(action.missionId, action.completed, action.notes);
+      // Follow up with an AI message tuned to the outcome: a motivational cheer
+      // on success, or a recovery nudge to start the next step on failure.
+      if (result.mission.status === 'completed') {
+        const streak = await streakCountFor(result.mission);
+        await sendTelegramMessage(replyExpiryResolved(result, Math.random, streak));
+        await sendTelegramMessage(
+          await composeCompletionCheer(result, result.plannedMinutes, result.plannedStart, result.startGraceMinutes)
+        ).catch(() => null);
+        await sendNextUpNudge();
+      } else {
+        await sendTelegramMessage(replyExpiryResolved(result));
+        await sendTelegramMessage(await composeNextStepNudge(result.mission)).catch(() => null);
       }
-      if (!intent) {
-        // A free-text reply that carries no status — re-prompt for status + notes.
-        await sendTelegramMessage(replyExpiryNeedsBoth());
-        return;
-      }
-      // A different command — the user moved on; drop the prompt and handle it below.
-      await missionService.clearNotesRequest(awaiting.id);
-    } else if (!intent) {
-      // After a normal completion, any free-text reply is captured as the notes.
-      const updated = await missionService.recordNotes(awaiting.id, text.trim());
+      console.log(`[Telegram Listener] Resolved expired "${result.mission.title}" as ${result.mission.status}`);
+      return;
+    }
+
+    case 'extend_expired': {
+      const mission = await missionService.extendExpiredMission(action.missionId, action.extendStr);
+      await sendTelegramMessage(replyExtended(mission));
+      console.log(`[Telegram Listener] Revived expired "${mission.title}" with more time`);
+      return;
+    }
+
+    case 'needs_extend_duration':
+      await sendTelegramMessage(replyNeedExtendDuration());
+      return;
+
+    case 'expiry_command':
+      // A real command arrived while ETA-expired-awaiting — the user moved on;
+      // drop the prompt and run it like any other command.
+      await missionService.clearNotesRequest(action.missionId);
+      await runCommand(action.intent);
+      return;
+
+    case 'record_notes': {
+      const updated = await missionService.recordNotes(action.missionId, action.notes);
       await sendTelegramMessage(replyNotesSaved(updated));
+      await sendNextUpNudge();
       console.log(`[Telegram Listener] Saved notes for "${updated.title}"`);
       return;
-    } else {
+    }
+
+    case 'notes_command':
       // A command after a completion prompt — user moved on; drop the prompt.
-      await missionService.clearNotesRequest(awaiting.id);
+      await missionService.clearNotesRequest(action.missionId);
+      await runCommand(action.intent);
+      return;
+
+    case 'plan_edit':
+      await runPlanEdit(action.edit, text);
+      return;
+
+    case 'silent':
+      return; // not a recognized request in any state — stay silent
+
+    case 'command':
+      await runCommand(action.intent);
+      return;
+  }
+}
+
+/**
+ * Plan propose-&-confirm: a bare "gas"/"tolak" accepts or rejects a pending AI
+ * proposal. Accept/reject act only when a proposal is actually waiting, so a
+ * bare "ok" with nothing to confirm stays silent; edits (geser/skip/tunda)
+ * apply directly.
+ */
+async function runPlanEdit(planEdit: PlanEditIntent, text: string): Promise<void> {
+  if (planEdit.kind === 'view') {
+    const blocks = await planService.getTodayPlan(DEFAULT_USER_ID);
+    await sendTelegramMessage(replyPlan(blocks)).catch(() => null);
+    console.log("[Telegram Listener] Sent today's plan");
+  } else if (planEdit.kind === 'draft') {
+    const proposed = await planService.proposeDay(DEFAULT_USER_ID);
+    await sendTelegramMessage(replyPlanDraft(proposed)).catch(() => null);
+    console.log('[Telegram Listener] Drafted catch-up plan');
+  } else {
+    const gated = planEdit.kind === 'accept' || planEdit.kind === 'reject';
+    if (!gated || (await planService.getProposed(DEFAULT_USER_ID)).length > 0) {
+      const result = await planService.applyEdit(DEFAULT_USER_ID, text);
+      await sendTelegramMessage(result.message).catch(() => null);
+      console.log(`[Telegram Listener] Plan ${planEdit.kind}`);
     }
   }
+}
 
-  if (!intent) {
-    // Plan propose-&-confirm: a bare "gas"/"tolak" accepts or rejects a pending AI
-    // proposal. It acts only when a proposal is actually waiting, so it never
-    // hijacks an ordinary one-word message.
-    const planEdit = parsePlanEdit(text);
-    if (planEdit) {
-      if (planEdit.kind === 'view') {
-        // "plan" / "rencana" — show today's orders.
-        const blocks = await planService.getTodayPlan(DEFAULT_USER_ID);
-        await sendTelegramMessage(replyPlan(blocks)).catch(() => null);
-        console.log("[Telegram Listener] Sent today's plan");
-      } else if (planEdit.kind === 'draft') {
-        // "usul" / "rancang" — draft a catch-up plan for what's been missed, awaiting "gas"/"tolak".
-        const proposed = await planService.proposeDay(DEFAULT_USER_ID);
-        await sendTelegramMessage(replyPlanDraft(proposed)).catch(() => null);
-        console.log('[Telegram Listener] Drafted catch-up plan');
-      } else {
-        // accept/reject only act when a proposal is pending (so a bare "ok" with
-        // nothing to confirm stays silent); edits (geser/skip/tunda) apply directly.
-        const gated = planEdit.kind === 'accept' || planEdit.kind === 'reject';
-        if (!gated || (await planService.getProposed(DEFAULT_USER_ID)).length > 0) {
-          const result = await planService.applyEdit(DEFAULT_USER_ID, text);
-          await sendTelegramMessage(result.message).catch(() => null);
-          console.log(`[Telegram Listener] Plan ${planEdit.kind}`);
-        }
-      }
-    }
-    return; // not a recognized request — stay silent
-  }
-
+/** Execute an ordinary mission command (start/complete/abort/extend/status/...). */
+async function runCommand(intent: ParsedIntent): Promise<void> {
   try {
     switch (intent.kind) {
       case 'start': {
+        // Check for scheduled habits that are due or missed right now.
+        const now = new Date();
+        const [schedules, loggedTypeIds] = await Promise.all([
+          habitRepo.getActiveSchedules(DEFAULT_USER_ID),
+          missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now)),
+        ]);
+
+        const conflicts = findConflictingHabits(schedules, new Set(loggedTypeIds), now);
+
+        if (conflicts.length > 0) {
+          // There's a scheduled habit due/missed — remind and ask for confirmation
+          // before starting this new mission.
+          const conflictMsg = replyConflictReminder(conflicts, intent.title);
+          if (conflictMsg) {
+            await sendTelegramMessage(conflictMsg);
+            await storePendingMission(DEFAULT_USER_ID, {
+              title: intent.title,
+              etaStr: intent.etaStr,
+              categoryName: intent.categoryName,
+              createdAt: Date.now(),
+            });
+            console.log(
+              `[Telegram Listener] Detected conflict for mission "${intent.title}" — awaiting confirmation`
+            );
+            return;
+          }
+        }
+
+        // No conflicts — proceed with starting the mission immediately.
         const { mission, heldMission } = await missionService.start(
           DEFAULT_USER_ID,
           intent.title,
@@ -222,12 +325,17 @@ async function handleText(text: string): Promise<void> {
             result.startGraceMinutes
           )
         ).catch(() => null);
+        // Notes came inline, so this completion is already terminal — nudge toward
+        // what's next. When notes are still pending, the nudge fires once they land
+        // (see the awaiting-notes branch above) so it isn't sent twice.
+        if (intent.notes) await sendNextUpNudge();
         console.log(`[Telegram Listener] Completed mission "${result.mission.title}"`);
         break;
       }
       case 'abort': {
         const mission = await missionService.abort(DEFAULT_USER_ID, intent.target);
         await sendTelegramMessage(replyAborted(mission));
+        await sendNextUpNudge();
         console.log(`[Telegram Listener] Aborted mission "${mission.title}"`);
         break;
       }

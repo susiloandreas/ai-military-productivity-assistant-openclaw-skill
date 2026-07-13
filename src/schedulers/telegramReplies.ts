@@ -8,11 +8,19 @@ import { Mission, HabitScheduleWithNames, PlanBlock } from '../types';
 import { MissionCompleteResult } from '../services/MissionService';
 import { formatMinutes } from '../utils/duration';
 import { formatClockTime } from '../utils/formatter';
+import type { DueHabit } from './idleReminderMessages';
 
 export type Rng = () => number;
 
 function pick<T>(items: T[], rng: Rng): T {
   return items[Math.floor(rng() * items.length)];
+}
+
+/** Projected clock time an ETA will expire, from the mission's start time. */
+function etaEndTime(mission: Mission): string | null {
+  if (mission.eta_minutes == null) return null;
+  const end = new Date(mission.started_at.getTime() + mission.eta_minutes * 60000);
+  return formatClockTime(end);
 }
 
 // ── Mission started ──────────────────────────────────────────────────────────
@@ -43,7 +51,11 @@ export function replyStarted(
   rng: Rng = Math.random
 ): string {
   const lines = [`📌 <b>${mission.title}</b>`];
-  if (mission.eta_minutes) lines.push(`⏱️ ETA: <b>${formatMinutes(mission.eta_minutes)}</b>`);
+  if (mission.eta_minutes) {
+    lines.push(`⏱️ ETA: <b>${formatMinutes(mission.eta_minutes)}</b>`);
+    const endTime = etaEndTime(mission);
+    if (endTime) lines.push(`🏁 Estimasi selesai: <b>${endTime}</b>`);
+  }
   if (mission.habit_category_id && categoryName) lines.push(`🏷️ Kategori: ${categoryName}`);
   let msg = `${pick(STARTED_HEADERS, rng)}\n\n${lines.join('\n')}\n\n${pick(STARTED_CLOSERS, rng)}`;
   if (heldMission) {
@@ -173,6 +185,27 @@ export function replyNotesSaved(mission: Mission, rng: Rng = Math.random): strin
   return `${pick(NOTES_SAVED, rng)}\n\n📌 <b>${mission.title}</b>`;
 }
 
+// ── Next-up nudge ────────────────────────────────────────────────────────────
+
+const NEXT_UP_HEADERS = [
+  '🎯 <b>SELANJUTNYA</b>',
+  '➡️ <b>TARGET BERIKUTNYA</b>',
+];
+
+/**
+ * Points at the next scheduled block after a mission closes, so the operator
+ * flows straight into it instead of going idle. Null when nothing is left on
+ * today's plan — the idle worker remains the backstop in that case.
+ */
+export function replyNextUp(block: PlanBlock | null, rng: Rng = Math.random): string | null {
+  if (!block) return null;
+  return (
+    `${pick(NEXT_UP_HEADERS, rng)}\n\n` +
+    `${hhmm(block.start_time)} · <b>${block.title}</b>\n\n` +
+    `Mulai kalau sudah siap: <i>"mulai ${block.title}"</i>`
+  );
+}
+
 // ── Mission aborted ──────────────────────────────────────────────────────────
 const ABORTED_HEADERS = [
   '🛑 <b>MISI DIBATALKAN</b>',
@@ -210,7 +243,13 @@ const EXTENDED_CLOSERS = [
 ];
 
 export function replyExtended(mission: Mission, rng: Rng = Math.random): string {
-  const eta = mission.eta_minutes != null ? `⏱️ ETA baru: <b>${formatMinutes(mission.eta_minutes)}</b>\n\n` : '';
+  let eta = '';
+  if (mission.eta_minutes != null) {
+    eta = `⏱️ ETA baru: <b>${formatMinutes(mission.eta_minutes)}</b>\n`;
+    const endTime = etaEndTime(mission);
+    if (endTime) eta += `🏁 Estimasi selesai: <b>${endTime}</b>\n`;
+    eta += '\n';
+  }
   return `${pick(EXTENDED_HEADERS, rng)}\n\n📌 <b>${mission.title}</b>\n${eta}${pick(EXTENDED_CLOSERS, rng)}`;
 }
 
@@ -408,4 +447,45 @@ export function replyHabitsToday(
   );
   const done = items.filter(h => h.status === 'done').length;
   return `📋 <b>KEBIASAAN HARI INI</b> (${done}/${items.length} selesai)\n\n${lines.join('\n')}`;
+}
+
+// ── Mission conflict reminder ────────────────────────────────────────────────
+
+const CONFLICT_HEADERS = [
+  '⚠️ <b>TUNGGU — ADA JADWAL YANG KAMU ABAIKAN</b>',
+  '🚨 <b>CEK ULANG — JADWAL MASIH BERLAKU</b>',
+  '💭 <b>MISI BARU BERTABRAKAN DENGAN JADWAL</b>',
+];
+
+const CONFLICT_CONFIRMATIONS = [
+  '<b>LANJUTKAN MISI:</b> Ketik <i>"ya"</i> untuk mulai meski jadwal masih belum terpenuhi',
+  '<b>KEPUTUSAN:</b> Ketik <i>"ya"</i> untuk lanjut, atau abaikan pesan ini untuk ambil jadwal dulu',
+  '<b>PERLU KEPUTUSAN:</b> Ketik <i>"ya"</i> jika yakin, atau selesaikan jadwal terlebih dahulu',
+];
+
+function habitConflictLine(conflict: DueHabit): string {
+  const { schedule, status, minutesLate, minutesLeft } = conflict;
+  const name = `<b>${schedule.habit_type_name}</b> (${schedule.category_name})`;
+  const at = `${String(Math.floor(timeToMinutes(schedule.expected_at) / 60)).padStart(2, '0')}:${String(timeToMinutes(schedule.expected_at) % 60).padStart(2, '0')}`;
+  if (status === 'missed') {
+    return `☠️ ${name} — ${at}, LEWAT ${formatMinutes(minutesLate)}`;
+  }
+  return `⏳ ${name} — ${at}, tersisa ${formatMinutes(minutesLeft)}`;
+}
+
+/** Remind the user about scheduled habits they're about to neglect by starting a new mission. */
+export function replyConflictReminder(
+  conflicts: DueHabit[],
+  missionTitle: string,
+  rng: Rng = Math.random
+): string | null {
+  if (conflicts.length === 0) return null;
+
+  const conflictLines = conflicts.map(habitConflictLine).join('\n');
+  return (
+    `${pick(CONFLICT_HEADERS, rng)}\n\n` +
+    `<b>Misi baru:</b> ${missionTitle}\n\n` +
+    `<b>Yang belum terpenuhi hari ini:</b>\n${conflictLines}\n\n` +
+    `${pick(CONFLICT_CONFIRMATIONS, rng)}`
+  );
 }

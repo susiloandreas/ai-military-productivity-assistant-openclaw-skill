@@ -2,15 +2,7 @@ import { CalendarEventRepository } from '../repositories/CalendarEventRepository
 import { GoogleCalendarService } from './GoogleCalendarService';
 import { listCalendars, listEventsInWindow } from '../utils/googleCalendar';
 import { eventToRow } from '../utils/calendarEventMap';
-
-const DAY_MS = 86_400_000;
-
-export interface CalendarSyncOptions {
-  /** How many days back to sync (default 7). */
-  pastDays?: number;
-  /** How many days forward to sync (default 90). */
-  futureDays?: number;
-}
+import { zonedTodayWindow } from '../utils/timeWindow';
 
 export interface CalendarSyncResult {
   calendars: number;
@@ -19,14 +11,22 @@ export interface CalendarSyncResult {
   byCategory: Record<string, number>;
   window: { from: string; to: string };
   errors: { calendar: string; message: string }[];
+  /**
+   * Order-independent fingerprint of the synced event set (id + start + title +
+   * category). Lets a caller send a notification only when the calendar actually
+   * changed since the previous sync.
+   */
+  signature: string;
 }
 
 /**
- * Mirrors events from ALL of the user's Google calendars into calendar_events,
- * over a rolling time window (recurring series expanded to instances). Each
- * event's category is parsed from a #hashtag in its title. Idempotent: upserts
- * on (user, calendar, event) and prunes events deleted in Google within the
- * window. A per-calendar failure (e.g. no read access) is collected, not fatal.
+ * Mirrors TODAY's events from ALL of the user's Google calendars into
+ * calendar_events (recurring series expanded to instances). "Today" is the local
+ * calendar day in the app timezone. Each event's category is parsed from a
+ * #hashtag in its title. Idempotent: upserts on (user, calendar, event), prunes
+ * events removed in Google, and drops any mirrored event outside today so the
+ * mirror stays scoped to the current day. A per-calendar failure is collected,
+ * not fatal.
  */
 export class CalendarSyncService {
   constructor(
@@ -34,12 +34,9 @@ export class CalendarSyncService {
     private readonly calendar: GoogleCalendarService
   ) {}
 
-  async syncAll(userId: string, opts: CalendarSyncOptions = {}): Promise<CalendarSyncResult> {
-    const pastDays = opts.pastDays ?? 7;
-    const futureDays = opts.futureDays ?? 90;
-    const now = Date.now();
-    const from = new Date(now - pastDays * DAY_MS).toISOString();
-    const to = new Date(now + futureDays * DAY_MS).toISOString();
+  async syncAll(userId: string): Promise<CalendarSyncResult> {
+    const tz = process.env.TZ || 'Asia/Jakarta';
+    const { from, to } = zonedTodayWindow(new Date(), tz);
 
     const token = await this.calendar.getAccessToken(userId);
     const calendars = await listCalendars(token);
@@ -51,7 +48,9 @@ export class CalendarSyncService {
       byCategory: {},
       window: { from, to },
       errors: [],
+      signature: '',
     };
+    const sigParts: string[] = [];
 
     for (const cal of calendars) {
       try {
@@ -65,12 +64,17 @@ export class CalendarSyncService {
           result.synced += 1;
           const key = row.category ?? 'UNTAGGED';
           result.byCategory[key] = (result.byCategory[key] ?? 0) + 1;
+          sigParts.push(`${row.event_id}|${row.starts_at}|${row.title}|${row.category ?? ''}`);
         }
         result.pruned += await this.events.deleteInWindowNotIn(userId, cal.id, from, to, keep);
       } catch (err) {
         result.errors.push({ calendar: cal.summary ?? cal.id, message: (err as Error).message });
       }
     }
+
+    // Keep the mirror scoped to today: drop leftovers from earlier wider syncs.
+    result.pruned += await this.events.keepOnlyWindow(userId, from, to);
+    result.signature = sigParts.sort().join('\n');
 
     return result;
   }

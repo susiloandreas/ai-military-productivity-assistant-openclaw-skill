@@ -4,8 +4,8 @@ import { CalendarEventRecord } from '../types';
 import { formatSuccess, formatError } from '../utils/formatter';
 
 /**
- * /calendar sync [--past N] [--future N]  — mirror all Google calendars
- * /calendar list [CATEGORY]               — upcoming events (optional #category)
+ * /calendar sync              — mirror today's events from all Google calendars
+ * /calendar list [CATEGORY]   — today's events (optional #category)
  */
 export async function handleCalendarCommand(
   args: string[],
@@ -18,10 +18,7 @@ export async function handleCalendarCommand(
   try {
     switch (sub) {
       case 'sync': {
-        const rest = args.slice(1);
-        const past = numFlag(rest, '--past');
-        const future = numFlag(rest, '--future');
-        const r = await syncService.syncAll(userId, { pastDays: past, futureDays: future });
+        const r = await syncService.syncAll(userId);
         const cats = Object.entries(r.byCategory)
           .sort((a, b) => b[1] - a[1])
           .map(([c, n]) => `  ${c}: ${n}`);
@@ -54,7 +51,7 @@ export async function handleCalendarCommand(
       }
 
       default:
-        return formatError('Usage: /calendar sync [--past N] [--future N] | /calendar list [CATEGORY]');
+        return formatError('Usage: /calendar sync | /calendar list [CATEGORY]');
     }
   } catch (err) {
     return formatError((err as Error).message);
@@ -73,11 +70,4 @@ function formatEventLine(e: CalendarEventRecord): string {
   }).format(new Date(e.starts_at));
   const tag = e.category ? ` [${e.category}]` : '';
   return `${when} — ${e.title}${tag}`;
-}
-
-function numFlag(args: string[], flag: string): number | undefined {
-  const idx = args.indexOf(flag);
-  if (idx === -1 || idx >= args.length - 1) return undefined;
-  const n = Number(args[idx + 1]);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
 }

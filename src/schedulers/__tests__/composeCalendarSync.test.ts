@@ -6,8 +6,9 @@ const base: CalendarSyncResult = {
   synced: 37,
   pruned: 0,
   byCategory: { WORK: 20, UNTAGGED: 9, FITNESS: 8 },
-  window: { from: '2026-07-09T00:00:00.000Z', to: '2026-10-14T00:00:00.000Z' },
+  window: { from: '2026-07-16T00:00:00.000Z', to: '2026-07-16T23:59:59.999Z' },
   errors: [],
+  signature: 'sig',
 };
 
 describe('composeCalendarSyncMessage', () => {
@@ -15,7 +16,7 @@ describe('composeCalendarSyncMessage', () => {
     const msg = composeCalendarSyncMessage(base);
     expect(msg).toContain('Calendars: 4');
     expect(msg).toContain('Synced: 37 event(s)');
-    expect(msg).toContain('Window: 2026-07-09 → 2026-10-14');
+    expect(msg).toContain('Window: 2026-07-16 → 2026-07-16');
     // WORK (20) before FITNESS (8) before UNTAGGED... actually UNTAGGED=9 > FITNESS=8
     expect(msg.indexOf('• WORK: 20')).toBeLessThan(msg.indexOf('• UNTAGGED: 9'));
     expect(msg.indexOf('• UNTAGGED: 9')).toBeLessThan(msg.indexOf('• FITNESS: 8'));

@@ -61,6 +61,19 @@ export class CalendarEventRepository {
     return rowCount ?? 0;
   }
 
+  /**
+   * Delete every mirrored event that starts outside [from, to] — used to keep the
+   * mirror scoped to a single day when syncing today-only. Returns rows removed.
+   */
+  async keepOnlyWindow(userId: string, from: string, to: string): Promise<number> {
+    const { rowCount } = await pool.query(
+      `DELETE FROM calendar_events
+        WHERE user_id = $1 AND (starts_at < $2 OR starts_at > $3)`,
+      [userId, from, to]
+    );
+    return rowCount ?? 0;
+  }
+
   /** Read mirrored events, filtered and ordered by start time ascending. */
   async list(userId: string, q: CalendarEventQuery = {}): Promise<CalendarEventRecord[]> {
     const clauses = ['user_id = $1'];

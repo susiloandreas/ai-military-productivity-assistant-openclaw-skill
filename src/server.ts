@@ -141,18 +141,15 @@ app.post('/google/calendar/sync-habits', async (req: Request, res: Response) => 
 });
 
 /**
- * Mirror ALL of the user's Google calendars into calendar_events over a rolling
- * window; category is parsed from a #hashtag in each event title. Body may set
- * pastDays / futureDays. Requires /auth/google first.
+ * Mirror TODAY's events from ALL of the user's Google calendars into
+ * calendar_events; category is parsed from a #hashtag in each event title.
+ * Requires /auth/google first.
  */
 app.post('/google/calendar/sync', async (req: Request, res: Response) => {
-  const body = (req.body ?? {}) as { userId?: string; pastDays?: number; futureDays?: number };
+  const body = (req.body ?? {}) as { userId?: string };
   const userId = typeof body.userId === 'string' ? body.userId : DEFAULT_USER_ID;
   try {
-    const result = await calendarSyncService.syncAll(userId, {
-      pastDays: body.pastDays,
-      futureDays: body.futureDays,
-    });
+    const result = await calendarSyncService.syncAll(userId);
     res.json(result);
   } catch (err) {
     console.error('Calendar sync error:', err);

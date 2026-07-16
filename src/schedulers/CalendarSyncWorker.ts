@@ -7,13 +7,17 @@ import { sendTelegramMessage } from '../utils/telegram';
 import { composeCalendarSyncMessage } from './composeCalendarSync';
 import { DEFAULT_USER_ID } from '../types';
 
-// How often to mirror all Google calendars. Configurable; floored at 5 min so a
-// misconfig can't hammer the Calendar API. Default: every 3 hours.
-const INTERVAL_MS = Math.max(5, Number(process.env.CALENDAR_SYNC_INTERVAL_MIN) || 180) * 60 * 1000;
+// How often to mirror the calendar. Configurable; floored at 5 min so a
+// misconfig can't hammer the Calendar API. Default: every 5 minutes.
+const INTERVAL_MS = Math.max(5, Number(process.env.CALENDAR_SYNC_INTERVAL_MIN) || 5) * 60 * 1000;
 
 const tokenRepo = new GoogleTokenRepository();
 const calendarService = new GoogleCalendarService(tokenRepo);
 const syncService = new CalendarSyncService(new CalendarEventRepository(), calendarService);
+
+// The last synced-event fingerprint, so a Telegram summary is only sent when the
+// calendar actually changed — a 5-min cadence would otherwise be pure spam.
+let lastSignature: string | null = null;
 
 async function runSync(): Promise<void> {
   const now = new Date();
@@ -31,9 +35,15 @@ async function runSync(): Promise<void> {
       `across ${result.calendars} calendar(s)`
   );
 
-  await sendTelegramMessage(composeCalendarSyncMessage(result)).catch(err =>
-    console.warn(`[Calendar Sync] Telegram send failed: ${(err as Error).message}`)
-  );
+  // Notify only on a real change. Skip the very first run after boot (a restart
+  // shouldn't fire a summary just because in-memory state was reset).
+  const changed = lastSignature !== null && result.signature !== lastSignature;
+  lastSignature = result.signature;
+  if (changed) {
+    await sendTelegramMessage(composeCalendarSyncMessage(result)).catch(err =>
+      console.warn(`[Calendar Sync] Telegram send failed: ${(err as Error).message}`)
+    );
+  }
 }
 
 async function main(): Promise<void> {

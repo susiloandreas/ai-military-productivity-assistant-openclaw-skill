@@ -28,18 +28,17 @@ import {
   replyError,
   replyPlan,
   replyPlanDraft,
-  replyConflictReminder,
   replyNextUp,
   replyCalendarEvents,
+  replyCalendarConflict,
 } from './telegramReplies';
 import { composeCalendarSyncMessage } from './composeCalendarSync';
+import { findConflictingEvents, DEFAULT_LOOKAHEAD_MIN } from './calendarConflict';
+import { parseDurationToMinutes } from '../utils/duration';
 import { GoogleTokenRepository } from '../repositories/GoogleTokenRepository';
 import { CalendarEventRepository } from '../repositories/CalendarEventRepository';
 import { GoogleCalendarService } from '../services/GoogleCalendarService';
 import { CalendarSyncService } from '../services/CalendarSyncService';
-import {
-  findConflictingHabits,
-} from './idleReminderMessages';
 import { nextUpcomingBlock } from '../services/planEdit';
 import { AbortNeedsTargetError } from '../services/MissionService';
 import { composeCoaching } from './composeCoaching';
@@ -284,32 +283,33 @@ async function runCommand(intent: ParsedIntent): Promise<void> {
   try {
     switch (intent.kind) {
       case 'start': {
-        // Check for scheduled habits that are due or missed right now.
+        // Warn if a calendar event is in progress now or starts within the ETA
+        // ("now or starting soon") — the schedule source of truth is the calendar.
         const now = new Date();
-        const [schedules, loggedTypeIds] = await Promise.all([
-          habitRepo.getActiveSchedules(DEFAULT_USER_ID),
-          missionRepo.getHabitTypeIdsLoggedSince(DEFAULT_USER_ID, startOfToday(now)),
-        ]);
+        const etaMinutes = intent.etaStr ? parseDurationToMinutes(intent.etaStr) : null;
+        const windowEndMs = now.getTime() + (etaMinutes ?? DEFAULT_LOOKAHEAD_MIN) * 60_000;
+        const events = await calendarEventRepo.list(DEFAULT_USER_ID, {
+          from: startOfToday(now).toISOString(),
+          to: new Date(windowEndMs).toISOString(),
+          limit: 100,
+        });
+        const conflicts = findConflictingEvents(events, now, etaMinutes);
 
-        const conflicts = findConflictingHabits(schedules, new Set(loggedTypeIds), now);
-
-        if (conflicts.length > 0) {
-          // There's a scheduled habit due/missed — remind and ask for confirmation
-          // before starting this new mission.
-          const conflictMsg = replyConflictReminder(conflicts, intent.title);
-          if (conflictMsg) {
-            await sendTelegramMessage(conflictMsg);
-            await storePendingMission(DEFAULT_USER_ID, {
-              title: intent.title,
-              etaStr: intent.etaStr,
-              categoryName: intent.categoryName,
-              createdAt: Date.now(),
-            });
-            console.log(
-              `[Telegram Listener] Detected conflict for mission "${intent.title}" — awaiting confirmation`
-            );
-            return;
-          }
+        const conflictMsg = replyCalendarConflict(conflicts, intent.title);
+        if (conflictMsg) {
+          // A calendar event clashes — remind and ask for confirmation before
+          // starting. Bare "ya" then starts it (confirm_pending flow, unchanged).
+          await sendTelegramMessage(conflictMsg);
+          await storePendingMission(DEFAULT_USER_ID, {
+            title: intent.title,
+            etaStr: intent.etaStr,
+            categoryName: intent.categoryName,
+            createdAt: Date.now(),
+          });
+          console.log(
+            `[Telegram Listener] Calendar conflict for "${intent.title}" — awaiting confirmation`
+          );
+          return;
         }
 
         // No conflicts — proceed with starting the mission immediately.

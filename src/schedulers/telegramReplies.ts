@@ -356,6 +356,38 @@ function calendarWhen(e: CalendarEventRecord): string {
   }).format(new Date(e.starts_at));
 }
 
+/** 'HH:MM' in the app timezone. */
+function calendarClock(e: CalendarEventRecord): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: TG_TZ,
+  }).format(new Date(e.starts_at));
+}
+
+/**
+ * Warn that a new mission clashes with the calendar (an event in progress or
+ * starting within the mission's ETA). Returns null when there are no conflicts.
+ */
+export function replyCalendarConflict(
+  conflicts: { event: CalendarEventRecord; status: 'ongoing' | 'soon'; minutesUntilStart: number }[],
+  missionTitle: string
+): string | null {
+  if (conflicts.length === 0) return null;
+  const lines = conflicts.map(c => {
+    const tag = c.event.category ? ` [${escapeHtml(c.event.category)}]` : '';
+    const state = c.status === 'ongoing' ? 'berlangsung' : `dalam ${c.minutesUntilStart}m`;
+    return `⚔️ ${calendarClock(c.event)} — ${escapeHtml(c.event.title)}${tag} (${state})`;
+  });
+  return (
+    `🗓️ <b>MISI BARU BERTABRAKAN DENGAN KALENDER</b>\n\n` +
+    `Misi baru: ${escapeHtml(missionTitle)}\n\n` +
+    `${lines.join('\n')}\n\n` +
+    `LANJUTKAN MISI: Ketik <i>"ya"</i> untuk mulai meski ada agenda di kalender`
+  );
+}
+
 /** Upcoming calendar events, optionally filtered to one #category. */
 export function replyCalendarEvents(events: CalendarEventRecord[], category: string | null): string {
   const header = category

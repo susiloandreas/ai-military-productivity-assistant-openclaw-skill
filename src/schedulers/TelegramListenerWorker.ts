@@ -30,7 +30,13 @@ import {
   replyPlanDraft,
   replyConflictReminder,
   replyNextUp,
+  replyCalendarEvents,
 } from './telegramReplies';
+import { composeCalendarSyncMessage } from './composeCalendarSync';
+import { GoogleTokenRepository } from '../repositories/GoogleTokenRepository';
+import { CalendarEventRepository } from '../repositories/CalendarEventRepository';
+import { GoogleCalendarService } from '../services/GoogleCalendarService';
+import { CalendarSyncService } from '../services/CalendarSyncService';
 import {
   findConflictingHabits,
 } from './idleReminderMessages';
@@ -93,6 +99,10 @@ const missionService = new MissionService(
   streakService,
   planService
 );
+const googleTokenRepo = new GoogleTokenRepository();
+const googleCalendarService = new GoogleCalendarService(googleTokenRepo);
+const calendarEventRepo = new CalendarEventRepository();
+const calendarSyncService = new CalendarSyncService(calendarEventRepo, googleCalendarService);
 
 const POLL_TIMEOUT_SEC = 30;
 const ERROR_BACKOFF_MS = 5000;
@@ -388,6 +398,31 @@ async function runCommand(intent: ParsedIntent): Promise<void> {
         const message = await composeCoaching(missionRepo, habitRepo, DEFAULT_USER_ID, slotForHour(now.getHours()), now, streakService, planService);
         await sendTelegramMessage(message);
         console.log('[Telegram Listener] Sent on-demand brief');
+        break;
+      }
+      case 'calendar_sync': {
+        if (!(await googleCalendarService.isConnected(DEFAULT_USER_ID))) {
+          const authUrl = (process.env.GOOGLE_OAUTH_REDIRECT_URI || '').replace('/callback', '');
+          await sendTelegramMessage(
+            `📅 Google Calendar belum terhubung.${authUrl ? `\nHubungkan di: ${authUrl}` : ''}`
+          );
+          break;
+        }
+        const result = await calendarSyncService.syncAll(DEFAULT_USER_ID);
+        await sendTelegramMessage(composeCalendarSyncMessage(result));
+        console.log(
+          `[Telegram Listener] Calendar synced (${result.synced} events across ${result.calendars} calendar(s))`
+        );
+        break;
+      }
+      case 'calendar_view': {
+        const events = await calendarEventRepo.list(DEFAULT_USER_ID, {
+          from: new Date().toISOString(),
+          category: intent.category ?? undefined,
+          limit: 20,
+        });
+        await sendTelegramMessage(replyCalendarEvents(events, intent.category));
+        console.log(`[Telegram Listener] Listed ${events.length} calendar event(s)`);
         break;
       }
     }

@@ -203,6 +203,22 @@ describe('parseIntent', () => {
     expect(parseIntent('mulai brief tim 15m')?.kind).toBe('start');
   });
 
+  it('classifies calendar sync requests', () => {
+    expect(parseIntent('sinkron kalender')).toEqual({ kind: 'calendar_sync' });
+    expect(parseIntent('sync calendar')).toEqual({ kind: 'calendar_sync' });
+    expect(parseIntent('calendar sync')).toEqual({ kind: 'calendar_sync' });
+    expect(parseIntent('sync gcal')).toEqual({ kind: 'calendar_sync' });
+  });
+
+  it('classifies calendar view, capturing a trailing category', () => {
+    expect(parseIntent('kalender')).toEqual({ kind: 'calendar_view', category: null });
+    expect(parseIntent('calendar')).toEqual({ kind: 'calendar_view', category: null });
+    expect(parseIntent('lihat kalender')).toEqual({ kind: 'calendar_view', category: null });
+    expect(parseIntent('calendar hari ini')).toEqual({ kind: 'calendar_view', category: null });
+    expect(parseIntent('calendar work')).toEqual({ kind: 'calendar_view', category: 'WORK' });
+    expect(parseIntent('kalender fitness')).toEqual({ kind: 'calendar_view', category: 'FITNESS' });
+  });
+
   it('returns null for unrelated chatter', () => {
     expect(parseIntent('how is the weather today')).toBeNull();
   });

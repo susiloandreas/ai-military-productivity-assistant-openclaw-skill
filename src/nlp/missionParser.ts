@@ -37,7 +37,9 @@ export type ParsedIntent =
   | { kind: 'status' }
   | { kind: 'help' }
   | { kind: 'habits' }
-  | { kind: 'brief' };
+  | { kind: 'brief' }
+  | { kind: 'calendar_sync' }
+  | { kind: 'calendar_view'; category: string | null };
 
 // ── Triggers ──────────────────────────────────────────────────────────────
 // "Strong" start verbs fire on their own. Checked longest-first so
@@ -168,6 +170,41 @@ const BRIEF_PHRASES = new Set([
   'coach',
   'motivasi',
 ]);
+
+// Trigger a Google Calendar sync — whole-message match. Checked before the
+// calendar *view* parse so "calendar sync" isn't read as view-with-category.
+const CALENDAR_SYNC_PHRASES = new Set([
+  'sync kalender',
+  'sinkron kalender',
+  'sinkronkan kalender',
+  'sync calendar',
+  'sinkron calendar',
+  'calendar sync',
+  'kalender sync',
+  'refresh kalender',
+  'update kalender',
+  'sync google calendar',
+  'sync gcal',
+]);
+
+// Leading verbs stripped before a calendar-view keyword ("lihat kalender").
+const CALENDAR_VIEW_LEAD = /^(lihat|show|view|tampilkan|cek|check|list)\s+/;
+const CALENDAR_VIEW_KEYWORDS = new Set(['kalender', 'calendar', 'agenda', 'acara']);
+// Words after the keyword that are NOT a category filter, just filler.
+const CALENDAR_VIEW_FILLER = new Set(['hari ini', 'today', 'list', 'upcoming', 'mendatang']);
+
+/**
+ * "kalender" / "calendar" / "lihat kalender" → view all upcoming; a trailing
+ * word is treated as a category filter ("calendar work" → category WORK).
+ */
+function parseCalendarView(lower: string): { kind: 'calendar_view'; category: string | null } | null {
+  const s = lower.replace(CALENDAR_VIEW_LEAD, '').trim();
+  const [head, ...tail] = s.split(/\s+/);
+  if (!CALENDAR_VIEW_KEYWORDS.has(head)) return null;
+  const rest = tail.join(' ').trim();
+  const category = rest && !CALENDAR_VIEW_FILLER.has(rest) ? rest.toUpperCase() : null;
+  return { kind: 'calendar_view', category };
+}
 
 // Connector words stripped before/after a duration or at the title edges.
 const LEADING_CONNECTOR = /^(start|mulai|begin)\s+/i;
@@ -329,6 +366,12 @@ export function parseIntent(raw: string): ParsedIntent | null {
   if (matchPhraseSet(lower, HELP_PHRASES)) return { kind: 'help' };
   if (matchPhraseSet(lower, HABITS_PHRASES)) return { kind: 'habits' };
   if (matchPhraseSet(lower, BRIEF_PHRASES)) return { kind: 'brief' };
+
+  // Calendar — sync (whole-message) is checked before view so "calendar sync"
+  // routes to a sync, not a view filtered by a bogus "SYNC" category.
+  if (matchPhraseSet(lower, CALENDAR_SYNC_PHRASES)) return { kind: 'calendar_sync' };
+  const calendarView = parseCalendarView(lower);
+  if (calendarView) return calendarView;
 
   // Complete — a confirmation, optionally followed by an actual duration and/or
   // inline notes set off by a delimiter, matching the "selesai, <notes>" report

@@ -4,7 +4,7 @@
  * mirroring the idle-reminder copy pools. All builders take an injectable `rng`
  * so tests can be deterministic.
  */
-import { Mission, HabitScheduleWithNames, PlanBlock } from '../types';
+import { Mission, HabitScheduleWithNames, PlanBlock, CalendarEventRecord } from '../types';
 import { MissionCompleteResult } from '../services/MissionService';
 import { formatMinutes } from '../utils/duration';
 import { formatClockTime } from '../utils/formatter';
@@ -332,9 +332,46 @@ export function replyHelp(): string {
 🗓️ <b>Rencana hari ini</b> — <i>"plan"</i> / <i>"rencana"</i> · ubah: <i>"geser lari ke jam 5 sore"</i>, <i>"skip meditasi"</i>, <i>"tunda 30 menit"</i>
 🧩 <b>Usulkan rencana susulan</b> — <i>"usul"</i> / <i>"rancang"</i> → balas <i>"gas"</i> / <i>"tolak"</i>
 📨 <b>Pengarahan</b> — <i>"brief"</i>
+🗓️ <b>Kalender</b> — <i>"kalender"</i> · per kategori: <i>"calendar work"</i> · sinkron: <i>"sinkron kalender"</i>
 🆘 <b>Bantuan</b> — <i>"help"</i>
 
 Tulis dalam bahasa biasa — tidak perlu format kaku.`;
+}
+
+// ── Calendar ─────────────────────────────────────────────────────────────────
+const TG_TZ = process.env.TZ || 'Asia/Jakarta';
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 'Thu 16 Jul 09:00' in the app timezone (date only for all-day events). */
+function calendarWhen(e: CalendarEventRecord): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    ...(e.all_day ? {} : { hour: '2-digit', minute: '2-digit', hour12: false }),
+    timeZone: TG_TZ,
+  }).format(new Date(e.starts_at));
+}
+
+/** Upcoming calendar events, optionally filtered to one #category. */
+export function replyCalendarEvents(events: CalendarEventRecord[], category: string | null): string {
+  const header = category
+    ? `🗓️ <b>KALENDER — #${escapeHtml(category)}</b>`
+    : '🗓️ <b>KALENDER — MENDATANG</b>';
+  if (events.length === 0) {
+    const empty = category
+      ? `Tidak ada acara mendatang dengan kategori #${escapeHtml(category)}.`
+      : 'Belum ada acara. Kirim "sinkron kalender" dulu.';
+    return `${header}\n\n${empty}`;
+  }
+  const lines = events.map(e => {
+    const tag = e.category ? ` [${escapeHtml(e.category)}]` : '';
+    return `${calendarWhen(e)} — ${escapeHtml(e.title)}${tag}`;
+  });
+  return `${header}\n\n${lines.join('\n')}`;
 }
 
 // ── Plan view / draft ────────────────────────────────────────────────────────

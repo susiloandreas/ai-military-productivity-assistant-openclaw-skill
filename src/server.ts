@@ -12,6 +12,7 @@ import { CoachingRepository } from './repositories/CoachingRepository';
 import { StreakRepository } from './repositories/StreakRepository';
 import { PlanRepository } from './repositories/PlanRepository';
 import { GoogleTokenRepository } from './repositories/GoogleTokenRepository';
+import { CalendarEventRepository } from './repositories/CalendarEventRepository';
 
 // Services
 import { GoalService } from './services/GoalService';
@@ -27,6 +28,7 @@ import { CoachingEngine } from './services/CoachingEngine';
 import { DebriefService } from './services/DebriefService';
 import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { HabitCalendarSyncService } from './services/HabitCalendarSyncService';
+import { CalendarSyncService } from './services/CalendarSyncService';
 
 // Analytics
 import { PerformanceAnalyzer } from './analytics/PerformanceAnalyzer';
@@ -38,6 +40,7 @@ import { handleTennisCommand } from './commands/tennisCommands';
 import { handleSleepCommand } from './commands/sleepCommands';
 import { handleStatusCommand } from './commands/statusCommands';
 import { handlePlanCommand } from './commands/planCommands';
+import { handleCalendarCommand } from './commands/calendarCommands';
 
 import { CommandRequest, CommandResponse, DEFAULT_USER_ID } from './types';
 import { formatError } from './utils/formatter';
@@ -53,6 +56,7 @@ const coachingRepo     = new CoachingRepository();
 const streakRepo       = new StreakRepository();
 const planRepo         = new PlanRepository();
 const googleTokenRepo  = new GoogleTokenRepository();
+const calendarEventRepo = new CalendarEventRepository();
 
 const goalService      = new GoalService(goalRepo, habitRepo);
 const streakService    = new StreakService(streakRepo, habitRepo);
@@ -73,6 +77,7 @@ const briefingService  = new BriefingService(
 );
 const googleCalendarService = new GoogleCalendarService(googleTokenRepo);
 const habitCalendarSyncService = new HabitCalendarSyncService(habitRepo, googleCalendarService);
+const calendarSyncService = new CalendarSyncService(calendarEventRepo, googleCalendarService);
 
 // ── Express app ──────────────────────────────────────────────────────────────
 const app = express();
@@ -135,6 +140,44 @@ app.post('/google/calendar/sync-habits', async (req: Request, res: Response) => 
   }
 });
 
+/**
+ * Mirror ALL of the user's Google calendars into calendar_events over a rolling
+ * window; category is parsed from a #hashtag in each event title. Body may set
+ * pastDays / futureDays. Requires /auth/google first.
+ */
+app.post('/google/calendar/sync', async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { userId?: string; pastDays?: number; futureDays?: number };
+  const userId = typeof body.userId === 'string' ? body.userId : DEFAULT_USER_ID;
+  try {
+    const result = await calendarSyncService.syncAll(userId, {
+      pastDays: body.pastDays,
+      futureDays: body.futureDays,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Calendar sync error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/** Read mirrored calendar events. Query: category, from, to, limit. */
+app.get('/google/calendar/events', async (req: Request, res: Response) => {
+  const q = req.query as Record<string, string | undefined>;
+  const userId = typeof q.userId === 'string' ? q.userId : DEFAULT_USER_ID;
+  try {
+    const events = await calendarEventRepo.list(userId, {
+      category: q.category,
+      from: q.from,
+      to: q.to,
+      limit: q.limit ? Number(q.limit) : undefined,
+    });
+    res.json({ events });
+  } catch (err) {
+    console.error('Calendar events read error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/commands', async (req: Request, res: Response) => {
   const { command, userId } = req.body as CommandRequest;
   const uid = userId ?? DEFAULT_USER_ID;
@@ -155,6 +198,9 @@ app.post('/commands', async (req: Request, res: Response) => {
         break;
       case '/habit':
         output = await handleHabitCommand(args, uid, habitService, habitCalendarSyncService);
+        break;
+      case '/calendar':
+        output = await handleCalendarCommand(args, uid, calendarSyncService, calendarEventRepo);
         break;
       case '/plan':
         output = await handlePlanCommand(args, uid, planService);
@@ -178,7 +224,7 @@ app.post('/commands', async (req: Request, res: Response) => {
         break;
       default:
         output = formatError(
-          `Unknown command: ${root}. Try /mission, /habit, /plan, /tennis, /sleep, /status`
+          `Unknown command: ${root}. Try /mission, /habit, /plan, /tennis, /sleep, /status, /calendar`
         );
     }
   } catch (err) {

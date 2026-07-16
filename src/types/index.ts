@@ -262,6 +262,22 @@ export interface GoogleOAuthToken {
   updated_at: Date;
 }
 
+// ── Calendar Events (mirrored from Google Calendar) ──────────────────────────
+export interface CalendarEventRecord {
+  id: string;
+  user_id: string;
+  calendar_id: string;
+  event_id: string;
+  title: string;
+  category: string | null;
+  location: string | null;
+  starts_at: Date;
+  ends_at: Date | null;
+  all_day: boolean;
+  html_link: string | null;
+  updated_at: Date;
+}
+
 // ── Shared ─────────────────────────────────────────────────────────────────
 export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 

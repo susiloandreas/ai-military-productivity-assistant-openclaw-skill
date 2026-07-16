@@ -107,6 +107,49 @@ export function createCalendar(accessToken: string, summary: string): Promise<Ca
   return request<CalendarListEntry>(accessToken, 'POST', '/calendar/v3/calendars', { summary });
 }
 
+/** Every calendar in the user's calendar list. */
+export function listCalendars(accessToken: string): Promise<CalendarListEntry[]> {
+  return request<{ items?: CalendarListEntry[] }>(
+    accessToken,
+    'GET',
+    '/calendar/v3/users/me/calendarList?maxResults=250&showHidden=true'
+  ).then(res => res.items ?? []);
+}
+
+/**
+ * List every event on a calendar between timeMin and timeMax (ISO strings),
+ * expanding recurring series into concrete instances (singleEvents=true) and
+ * following pagination to completion.
+ */
+export async function listEventsInWindow(
+  accessToken: string,
+  calendarId: string,
+  timeMin: string,
+  timeMax: string
+): Promise<CalendarEvent[]> {
+  const events: CalendarEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      showDeleted: 'false',
+      maxResults: '250',
+      timeMin,
+      timeMax,
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const page = await request<{ items?: CalendarEvent[]; nextPageToken?: string }>(
+      accessToken,
+      'GET',
+      `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`
+    );
+    for (const e of page.items ?? []) if (e.status !== 'cancelled') events.push(e);
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return events;
+}
+
 /** Find a calendar the user owns by its exact summary (case-insensitive), or null. */
 export function findCalendarBySummary(
   accessToken: string,

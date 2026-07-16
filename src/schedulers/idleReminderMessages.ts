@@ -1,4 +1,4 @@
-import { HabitScheduleWithNames } from '../types';
+import { HabitScheduleWithNames, CalendarEventRecord } from '../types';
 import { formatMinutes } from '../utils/duration';
 import { MINIMUM_VIABLE_MINUTES, recoveryState } from '../services/missRecovery';
 
@@ -337,6 +337,76 @@ export function buildGenericIdleMessage(
   const paragraphs = base.split('\n\n');
   paragraphs.splice(paragraphs.length - 1, 0, hint);
   return paragraphs.join('\n\n');
+}
+
+// ── Calendar-driven idle nudge ───────────────────────────────────────────────
+
+/** Lookahead (minutes) for the "starting soon" idle nudge. */
+export const IDLE_CALENDAR_LOOKAHEAD_MIN = 30;
+
+const IDLE_TZ = process.env.TZ || 'Asia/Jakarta';
+
+function calClock(d: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: IDLE_TZ,
+  }).format(d);
+}
+
+function calEsc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Idle nudge derived from the calendar: if an event is in progress the operator
+ * should be on it; else if one starts within IDLE_CALENDAR_LOOKAHEAD_MIN, a
+ * heads-up. Returns null when the calendar has nothing relevant, so the caller
+ * falls back to the generic idle nudge. All-day events are ignored.
+ */
+export function buildCalendarIdleMessage(events: CalendarEventRecord[], now: Date): string | null {
+  const nowMs = now.getTime();
+  const timed = events.filter(e => !e.all_day);
+
+  const ongoing = timed
+    .filter(e => {
+      const s = new Date(e.starts_at).getTime();
+      const en = e.ends_at ? new Date(e.ends_at).getTime() : s;
+      return s <= nowMs && nowMs < en;
+    })
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+
+  if (ongoing.length > 0) {
+    const e = ongoing[0];
+    const cat = e.category ? ` (${calEsc(e.category)})` : '';
+    const until = e.ends_at ? ` sampai ${calClock(new Date(e.ends_at))}` : '';
+    return (
+      `⏰ <b>SEKARANG DI KALENDER</b>\n` +
+      `<b>${calEsc(e.title)}</b>${cat}${until}.\n\n` +
+      `Kamu idle — harusnya di sini. Ketik <i>"mulai ${calEsc(e.title)}"</i> atau lapor.`
+    );
+  }
+
+  const soon = timed
+    .filter(e => {
+      const s = new Date(e.starts_at).getTime();
+      return s > nowMs && s <= nowMs + IDLE_CALENDAR_LOOKAHEAD_MIN * 60_000;
+    })
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+
+  if (soon.length > 0) {
+    const e = soon[0];
+    const cat = e.category ? ` (${calEsc(e.category)})` : '';
+    const mins = Math.round((new Date(e.starts_at).getTime() - nowMs) / 60_000);
+    return (
+      `🔔 <b>SEBENTAR LAGI</b>\n` +
+      `<b>${calEsc(e.title)}</b>${cat} jam ${calClock(new Date(e.starts_at))} (${mins}m lagi).\n\n` +
+      `Bereskan biar siap. Ketik <i>"mulai [aktivitas]"</i>.`
+    );
+  }
+
+  return null;
 }
 
 // ── Habit conflict when starting a mission ───────────────────────────────────

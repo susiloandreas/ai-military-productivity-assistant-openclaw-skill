@@ -17,16 +17,28 @@ import { Mission } from '../types';
  * as `route(text, pending, awaiting) → expected action`, no mocks required.
  */
 
+/** The conflicting calendar event, offered as an alternative to start instead. */
+export interface PendingCalendarEvent {
+  title: string;
+  categoryName: string | null;
+  /** ISO end time, used to size the mission's ETA when started. */
+  endsAt: string | null;
+}
+
 export interface PendingMission {
   title: string;
   etaStr: string | null;
   categoryName: string | null;
   createdAt: number;
+  /** When the mission was held back by a calendar clash, the clashing event. */
+  calendarEvent?: PendingCalendarEvent;
 }
 
 export type Action =
-  /** Bare "ya"/"gas"/etc. confirms a mission held back by a habit conflict. */
+  /** Bare "ya"/"gas"/etc. confirms a mission held back by a calendar conflict. */
   | { type: 'confirm_pending'; pending: PendingMission }
+  /** "kalender" instead — start the clashing calendar event as the mission. */
+  | { type: 'confirm_calendar'; event: PendingCalendarEvent }
   /** ETA-expired reply carried no recognizable status at all — ask for one. */
   | { type: 'expiry_needs_status' }
   /**
@@ -54,6 +66,9 @@ export type Action =
   | { type: 'command'; intent: ParsedIntent };
 
 const CONFIRMATION_RE = /^(ya|yes|ok|oke|yak|lanjut|gas|go)\b/i;
+// "start the calendar event instead" — only meaningful while a calendar clash is
+// pending, so it can safely overload "kalender" (which is otherwise a list view).
+const CALENDAR_CONFIRM_RE = /^(ikuti?\s+)?(kalender|calendar|agenda|jadwal)\b|^(sesuai|ikuti?)\s+(jadwal|kalender)\b/i;
 
 /**
  * Decide what the incoming message means given the two live pieces of
@@ -66,9 +81,17 @@ export function route(
   awaitingMission: Mission | null
 ): Action {
   const intent = parseIntent(text);
+  const trimmed = text.trim();
 
-  if (pendingMission && !intent && CONFIRMATION_RE.test(text.trim())) {
-    return { type: 'confirm_pending', pending: pendingMission };
+  if (pendingMission) {
+    // "kalender" → start the clashing event instead. Checked before parseIntent's
+    // calendar_view so it wins while a conflict is pending.
+    if (pendingMission.calendarEvent && CALENDAR_CONFIRM_RE.test(trimmed)) {
+      return { type: 'confirm_calendar', event: pendingMission.calendarEvent };
+    }
+    if (!intent && CONFIRMATION_RE.test(trimmed)) {
+      return { type: 'confirm_pending', pending: pendingMission };
+    }
   }
 
   if (awaitingMission) {

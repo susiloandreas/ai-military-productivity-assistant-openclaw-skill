@@ -57,6 +57,25 @@ describe('route — pending mission confirmation', () => {
     const action = route('ya', null, null);
     expect(action.type).toBe('silent');
   });
+
+  it('starts the calendar event on "kalender" when one was offered', () => {
+    const evt = { title: 'Lunch', categoryName: 'BUFFER', endsAt: '2026-07-16T13:30:00+07:00' };
+    const p = pending({ calendarEvent: evt });
+    expect(route('kalender', p, null)).toEqual({ type: 'confirm_calendar', event: evt });
+    expect(route('ikuti jadwal', p, null)).toEqual({ type: 'confirm_calendar', event: evt });
+  });
+
+  it('still confirms the new mission on "ya" even when a calendar option exists', () => {
+    const p = pending({ calendarEvent: { title: 'Lunch', categoryName: null, endsAt: null } });
+    expect(route('ya', p, null)).toEqual({ type: 'confirm_pending', pending: p });
+  });
+
+  it('treats "kalender" as a normal list view when nothing is pending', () => {
+    expect(route('kalender', null, null)).toEqual({
+      type: 'command',
+      intent: { kind: 'calendar_view', category: null },
+    });
+  });
 });
 
 describe('route — ETA-expired mission awaiting resolution', () => {

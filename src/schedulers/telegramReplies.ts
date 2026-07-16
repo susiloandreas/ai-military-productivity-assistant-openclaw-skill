@@ -380,11 +380,14 @@ export function replyCalendarConflict(
     const state = c.status === 'ongoing' ? 'berlangsung' : `dalam ${c.minutesUntilStart}m`;
     return `⚔️ ${calendarClock(c.event)} — ${escapeHtml(c.event.title)}${tag} (${state})`;
   });
+  // Offer the primary (earliest/ongoing) event as a one-word "follow the calendar".
+  const primary = conflicts[0].event;
   return (
     `🗓️ <b>MISI BARU BERTABRAKAN DENGAN KALENDER</b>\n\n` +
     `Misi baru: ${escapeHtml(missionTitle)}\n\n` +
     `${lines.join('\n')}\n\n` +
-    `LANJUTKAN MISI: Ketik <i>"ya"</i> untuk mulai meski ada agenda di kalender`
+    `▶️ Ketik <i>"ya"</i> — mulai <b>${escapeHtml(missionTitle)}</b> tetap jalan\n` +
+    `🗓️ Ketik <i>"kalender"</i> — ikuti jadwal, mulai <b>${escapeHtml(primary.title)}</b>`
   );
 }
 

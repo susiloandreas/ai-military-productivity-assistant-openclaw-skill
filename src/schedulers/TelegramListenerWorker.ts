@@ -176,6 +176,32 @@ async function executeAction(action: Action, text: string): Promise<void> {
       return;
     }
 
+    case 'confirm_calendar': {
+      // Start the clashing calendar event as the mission instead. ETA = time left
+      // until the event ends (open-ended when it has no/past end time).
+      await clearPendingMission(DEFAULT_USER_ID);
+      let etaStr: string | null = null;
+      if (action.event.endsAt) {
+        const remaining = Math.ceil((new Date(action.event.endsAt).getTime() - Date.now()) / 60_000);
+        if (remaining > 0) etaStr = `${remaining}m`;
+      }
+      try {
+        const { mission, heldMission } = await missionService.start(
+          DEFAULT_USER_ID,
+          action.event.title,
+          etaStr,
+          action.event.categoryName
+        );
+        await sendTelegramMessage(replyStarted(mission, action.event.categoryName, heldMission));
+        console.log(`[Telegram Listener] Started calendar event as mission "${mission.title}"`);
+      } catch (err) {
+        const message = (err as Error).message;
+        console.warn(`[Telegram Listener] Failed to start calendar mission: ${message}`);
+        await sendTelegramMessage(replyError(message)).catch(() => null);
+      }
+      return;
+    }
+
     case 'expiry_needs_status':
       // Re-prompt until a recognizable status (selesai/belum) is given.
       await sendTelegramMessage(replyExpiryNeedsStatus());
@@ -300,11 +326,17 @@ async function runCommand(intent: ParsedIntent): Promise<void> {
           // A calendar event clashes — remind and ask for confirmation before
           // starting. Bare "ya" then starts it (confirm_pending flow, unchanged).
           await sendTelegramMessage(conflictMsg);
+          const primary = conflicts[0].event;
           await storePendingMission(DEFAULT_USER_ID, {
             title: intent.title,
             etaStr: intent.etaStr,
             categoryName: intent.categoryName,
             createdAt: Date.now(),
+            calendarEvent: {
+              title: primary.title,
+              categoryName: primary.category,
+              endsAt: primary.ends_at ? new Date(primary.ends_at).toISOString() : null,
+            },
           });
           console.log(
             `[Telegram Listener] Calendar conflict for "${intent.title}" — awaiting confirmation`

@@ -11,6 +11,7 @@ import { DisciplineRepository } from './repositories/DisciplineRepository';
 import { CoachingRepository } from './repositories/CoachingRepository';
 import { StreakRepository } from './repositories/StreakRepository';
 import { PlanRepository } from './repositories/PlanRepository';
+import { GoogleTokenRepository } from './repositories/GoogleTokenRepository';
 
 // Services
 import { GoalService } from './services/GoalService';
@@ -24,6 +25,7 @@ import { BriefingService } from './services/BriefingService';
 import { DisciplineScoreService } from './services/DisciplineScoreService';
 import { CoachingEngine } from './services/CoachingEngine';
 import { DebriefService } from './services/DebriefService';
+import { GoogleCalendarService } from './services/GoogleCalendarService';
 
 // Analytics
 import { PerformanceAnalyzer } from './analytics/PerformanceAnalyzer';
@@ -49,6 +51,7 @@ const disciplineRepo   = new DisciplineRepository();
 const coachingRepo     = new CoachingRepository();
 const streakRepo       = new StreakRepository();
 const planRepo         = new PlanRepository();
+const googleTokenRepo  = new GoogleTokenRepository();
 
 const goalService      = new GoalService(goalRepo, habitRepo);
 const streakService    = new StreakService(streakRepo, habitRepo);
@@ -67,6 +70,7 @@ const debriefService   = new DebriefService(
 const briefingService  = new BriefingService(
   missionService, sleepService, goalService, tennisService, disciplineScoreService, coachingEngine
 );
+const googleCalendarService = new GoogleCalendarService(googleTokenRepo);
 
 // ── Express app ──────────────────────────────────────────────────────────────
 const app = express();
@@ -74,6 +78,43 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'ironclaw-ai', timestamp: new Date().toISOString() });
+});
+
+// ── Google Calendar OAuth ─────────────────────────────────────────────────────
+
+/**
+ * Start the Google consent flow. Redirects the browser to Google's consent
+ * screen; `state` carries the user id back to the callback. Single-user for now
+ * (DEFAULT_USER_ID) — pass ?userId=… to authorize a specific user.
+ */
+app.get('/auth/google', (req: Request, res: Response) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId : DEFAULT_USER_ID;
+  try {
+    res.redirect(googleCalendarService.getAuthUrl(userId));
+  } catch (err) {
+    console.error('Google auth start error:', err);
+    res.status(500).send('Google OAuth is not configured. Set the GOOGLE_OAUTH_* env vars.');
+  }
+});
+
+/**
+ * OAuth callback. Google redirects here with ?code & ?state (the user id). We
+ * exchange the code for tokens and persist them. `error` is present when the
+ * user denies consent.
+ */
+app.get('/auth/google/callback', async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string | undefined>;
+  if (error) return res.status(400).send(`Google authorization was denied: ${error}`);
+  if (!code) return res.status(400).send('Missing authorization code.');
+
+  const userId = typeof state === 'string' && state ? state : DEFAULT_USER_ID;
+  try {
+    const scope = await googleCalendarService.handleCallback(code, userId);
+    res.send(`✅ Google Calendar connected. Granted scope: ${scope}. You can close this tab.`);
+  } catch (err) {
+    console.error('Google auth callback error:', err);
+    res.status(500).send('Failed to complete Google authorization. Check server logs.');
+  }
 });
 
 app.post('/commands', async (req: Request, res: Response) => {

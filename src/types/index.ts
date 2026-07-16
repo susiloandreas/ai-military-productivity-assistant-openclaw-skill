@@ -247,6 +247,19 @@ export interface CoachingInsight {
   category: string | null;
 }
 
+// ── Google OAuth ─────────────────────────────────────────────────────────────
+export interface GoogleOAuthToken {
+  user_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  scope: string | null;
+  token_type: string | null;
+  /** Access token expiry as epoch milliseconds. */
+  expiry_date: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 // ── Shared ─────────────────────────────────────────────────────────────────
 export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 

@@ -19,12 +19,21 @@ export class GoogleTokenRepository {
   async get(userId: string): Promise<GoogleOAuthToken | null> {
     const { rows } = await pool.query<GoogleOAuthToken>(
       `SELECT user_id, access_token, refresh_token, scope, token_type,
-              expiry_date, created_at, updated_at
+              expiry_date, habit_calendar_id, created_at, updated_at
          FROM google_oauth_tokens
         WHERE user_id = $1`,
       [userId]
     );
     return rows[0] ?? null;
+  }
+
+  /** Remember the id of the user's dedicated habit calendar. */
+  async setHabitCalendarId(userId: string, calendarId: string): Promise<void> {
+    await pool.query(
+      `UPDATE google_oauth_tokens SET habit_calendar_id = $2, updated_at = NOW()
+        WHERE user_id = $1`,
+      [userId, calendarId]
+    );
   }
 
   /**

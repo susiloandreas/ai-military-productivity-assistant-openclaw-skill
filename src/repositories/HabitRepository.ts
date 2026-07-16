@@ -95,6 +95,52 @@ export class HabitRepository {
     return rows[0];
   }
 
+  /**
+   * Upsert a schedule sourced from a Google Calendar event, keyed on its event
+   * id. Re-activates a previously deactivated row if its event reappears. Only
+   * ever touches calendar-sourced rows — app-created schedules have a NULL
+   * google_event_id and a different (null) key, so they are never affected.
+   */
+  async upsertScheduleFromCalendar(
+    userId: string,
+    habitTypeId: string,
+    googleEventId: string,
+    expectedAt: string,
+    daysOfWeek: number[],
+    graceMinutes = 90
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO habit_schedules
+         (user_id, habit_type_id, expected_at, days_of_week, grace_minutes, google_event_id, active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+       ON CONFLICT (user_id, google_event_id) WHERE google_event_id IS NOT NULL
+       DO UPDATE SET habit_type_id = EXCLUDED.habit_type_id,
+                     expected_at   = EXCLUDED.expected_at,
+                     days_of_week  = EXCLUDED.days_of_week,
+                     grace_minutes = EXCLUDED.grace_minutes,
+                     active        = TRUE`,
+      [userId, habitTypeId, expectedAt, daysOfWeek, graceMinutes, googleEventId]
+    );
+  }
+
+  /**
+   * Deactivate calendar-sourced schedules whose event id is no longer present on
+   * the habit calendar (deleted in Google). App-created schedules (NULL event id)
+   * are untouched. Returns the number deactivated.
+   */
+  async deactivateCalendarSchedulesNotIn(userId: string, keepEventIds: string[]): Promise<number> {
+    const { rowCount } = await pool.query(
+      `UPDATE habit_schedules
+          SET active = FALSE
+        WHERE user_id = $1
+          AND google_event_id IS NOT NULL
+          AND active = TRUE
+          AND NOT (google_event_id = ANY($2::text[]))`,
+      [userId, keepEventIds]
+    );
+    return rowCount ?? 0;
+  }
+
   /** Active schedules with their habit type + category names, for the reminder check. */
   async getActiveSchedules(userId: string): Promise<HabitScheduleWithNames[]> {
     const { rows } = await pool.query<HabitScheduleWithNames>(

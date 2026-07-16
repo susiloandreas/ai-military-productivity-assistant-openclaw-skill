@@ -26,6 +26,7 @@ import { DisciplineScoreService } from './services/DisciplineScoreService';
 import { CoachingEngine } from './services/CoachingEngine';
 import { DebriefService } from './services/DebriefService';
 import { GoogleCalendarService } from './services/GoogleCalendarService';
+import { HabitCalendarSyncService } from './services/HabitCalendarSyncService';
 
 // Analytics
 import { PerformanceAnalyzer } from './analytics/PerformanceAnalyzer';
@@ -71,6 +72,7 @@ const briefingService  = new BriefingService(
   missionService, sleepService, goalService, tennisService, disciplineScoreService, coachingEngine
 );
 const googleCalendarService = new GoogleCalendarService(googleTokenRepo);
+const habitCalendarSyncService = new HabitCalendarSyncService(habitRepo, googleCalendarService);
 
 // ── Express app ──────────────────────────────────────────────────────────────
 const app = express();
@@ -117,6 +119,22 @@ app.get('/auth/google/callback', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Sync habits from the dedicated "Ironclaw Habits" Google Calendar into
+ * habit_schedules. Idempotent; creates the calendar on first call. The user must
+ * have connected via /auth/google first.
+ */
+app.post('/google/calendar/sync-habits', async (req: Request, res: Response) => {
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId : DEFAULT_USER_ID;
+  try {
+    const result = await habitCalendarSyncService.sync(userId);
+    res.json(result);
+  } catch (err) {
+    console.error('Habit calendar sync error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/commands', async (req: Request, res: Response) => {
   const { command, userId } = req.body as CommandRequest;
   const uid = userId ?? DEFAULT_USER_ID;
@@ -136,7 +154,7 @@ app.post('/commands', async (req: Request, res: Response) => {
         output = await handleMissionCommand(args, uid, missionService);
         break;
       case '/habit':
-        output = await handleHabitCommand(args, uid, habitService);
+        output = await handleHabitCommand(args, uid, habitService, habitCalendarSyncService);
         break;
       case '/plan':
         output = await handlePlanCommand(args, uid, planService);

@@ -27,6 +27,8 @@ export interface CalendarEvent extends CalendarEventInput {
   id: string;
   htmlLink?: string;
   status?: string;
+  /** RRULE/EXDATE lines for a recurring event master (present when singleEvents=false). */
+  recurrence?: string[];
 }
 
 /** A single authorized JSON request to the Calendar API. */
@@ -92,6 +94,50 @@ export function insertEvent(
     `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
     event
   );
+}
+
+/** A calendar in the user's calendar list. */
+export interface CalendarListEntry {
+  id: string;
+  summary?: string;
+}
+
+/** Create a new secondary calendar; returns its id. */
+export function createCalendar(accessToken: string, summary: string): Promise<CalendarListEntry> {
+  return request<CalendarListEntry>(accessToken, 'POST', '/calendar/v3/calendars', { summary });
+}
+
+/** Find a calendar the user owns by its exact summary (case-insensitive), or null. */
+export function findCalendarBySummary(
+  accessToken: string,
+  summary: string
+): Promise<CalendarListEntry | null> {
+  return request<{ items?: CalendarListEntry[] }>(
+    accessToken,
+    'GET',
+    '/calendar/v3/users/me/calendarList?maxResults=250&showHidden=true'
+  ).then(res => res.items?.find(c => c.summary?.toLowerCase() === summary.toLowerCase()) ?? null);
+}
+
+/**
+ * List the recurring-event masters on a calendar. singleEvents=false returns
+ * each recurring series once, carrying its `recurrence` RRULE (what the habit
+ * sync needs) rather than expanding it into individual instances.
+ */
+export function listRecurringMasters(
+  accessToken: string,
+  calendarId: string
+): Promise<CalendarEvent[]> {
+  const params = new URLSearchParams({
+    singleEvents: 'false',
+    showDeleted: 'false',
+    maxResults: '250',
+  });
+  return request<{ items?: CalendarEvent[] }>(
+    accessToken,
+    'GET',
+    `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`
+  ).then(res => (res.items ?? []).filter(e => e.status !== 'cancelled'));
 }
 
 /** List upcoming events (timeMin = now), soonest first. */

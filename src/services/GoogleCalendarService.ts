@@ -9,9 +9,15 @@ import {
 import {
   CalendarEvent,
   CalendarEventInput,
+  createCalendar,
+  findCalendarBySummary,
   insertEvent,
+  listRecurringMasters,
   listUpcomingEvents,
 } from '../utils/googleCalendar';
+
+/** Name of the dedicated calendar whose events are treated as habits. */
+export const HABIT_CALENDAR_NAME = 'Ironclaw Habits';
 
 /** Refresh a little before the real expiry so an in-flight call never races it. */
 const EXPIRY_SKEW_MS = 60_000;
@@ -88,5 +94,28 @@ export class GoogleCalendarService {
   async listUpcoming(userId: string, maxResults = 10): Promise<CalendarEvent[]> {
     const token = await this.getAccessToken(userId);
     return listUpcomingEvents(token, maxResults);
+  }
+
+  /**
+   * Resolve the user's dedicated "Ironclaw Habits" calendar id, creating the
+   * calendar (or adopting an existing same-named one) on first use and caching
+   * the id. This is where the user adds recurring events that become habits.
+   */
+  async ensureHabitCalendar(userId: string): Promise<string> {
+    const existing = await this.tokens.get(userId);
+    if (existing?.habit_calendar_id) return existing.habit_calendar_id;
+
+    const token = await this.getAccessToken(userId);
+    const found = await findCalendarBySummary(token, HABIT_CALENDAR_NAME);
+    const calendarId = found?.id ?? (await createCalendar(token, HABIT_CALENDAR_NAME)).id;
+    await this.tokens.setHabitCalendarId(userId, calendarId);
+    return calendarId;
+  }
+
+  /** The recurring-event masters on the user's habit calendar. */
+  async listHabitMasters(userId: string): Promise<CalendarEvent[]> {
+    const calendarId = await this.ensureHabitCalendar(userId);
+    const token = await this.getAccessToken(userId);
+    return listRecurringMasters(token, calendarId);
   }
 }

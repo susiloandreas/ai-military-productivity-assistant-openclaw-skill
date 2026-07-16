@@ -256,6 +256,8 @@ export interface GoogleOAuthToken {
   token_type: string | null;
   /** Access token expiry as epoch milliseconds. */
   expiry_date: number | null;
+  /** Id of the dedicated "Ironclaw Habits" calendar, once created. */
+  habit_calendar_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

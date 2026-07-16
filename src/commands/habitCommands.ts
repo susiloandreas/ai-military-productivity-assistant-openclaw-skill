@@ -1,4 +1,5 @@
 import { HabitService } from '../services/HabitService';
+import { HabitCalendarSyncService } from '../services/HabitCalendarSyncService';
 import { formatSuccess, formatError, formatBlock } from '../utils/formatter';
 import { formatMinutes } from '../utils/duration';
 import { parseTimeOfDay, parseDaysOfWeek, formatDaysOfWeek } from '../utils/schedule';
@@ -10,13 +11,15 @@ import { parseTimeOfDay, parseDaysOfWeek, formatDaysOfWeek } from '../utils/sche
  * /habit schedule add <category> <type> <time> <days> [--grace <minutes>]
  * /habit schedule list
  * /habit summary
+ * /habit sync            — pull habits from the "Ironclaw Habits" Google Calendar
  *
  * Retroactive activity logging moved to `/mission log`.
  */
 export async function handleHabitCommand(
   args: string[],
   userId: string,
-  service: HabitService
+  service: HabitService,
+  syncService?: HabitCalendarSyncService
 ): Promise<string> {
   const sub = args[0];
 
@@ -130,6 +133,26 @@ export async function handleHabitCommand(
         return formatError('Usage: /habit schedule add ... | /habit schedule list');
       }
 
+      case 'sync': {
+        if (!syncService) return formatError('Calendar sync is not available.');
+        const r = await syncService.sync(userId);
+        const lines: string[] = [];
+        if (r.synced.length > 0) {
+          lines.push(`Synced ${r.synced.length} habit(s):`);
+          for (const h of r.synced) {
+            lines.push(`  ${h.expectedAt.slice(0, 5)} — ${h.name} — ${formatDaysOfWeek(h.days)}`);
+          }
+        } else {
+          lines.push('No habits found on the "Ironclaw Habits" calendar.');
+        }
+        if (r.deactivated > 0) lines.push(`Deactivated ${r.deactivated} removed habit(s).`);
+        if (r.skipped.length > 0) {
+          lines.push('Skipped:');
+          for (const s of r.skipped) lines.push(`  ${s.summary} — ${s.reason}`);
+        }
+        return formatSuccess('HABIT CALENDAR SYNC', lines);
+      }
+
       case 'summary': {
         const summary = await service.getWeeklySummary(userId);
         if (summary.length === 0) return formatSuccess('HABIT SUMMARY', ['No data yet.']);
@@ -144,7 +167,7 @@ export async function handleHabitCommand(
 
       default:
         return formatError(
-          'Usage: /habit category | /habit goal | /habit schedule | /habit summary'
+          'Usage: /habit category | /habit goal | /habit schedule | /habit summary | /habit sync'
         );
     }
   } catch (err) {

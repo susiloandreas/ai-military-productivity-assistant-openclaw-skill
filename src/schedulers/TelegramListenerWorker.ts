@@ -34,6 +34,7 @@ import {
 } from './telegramReplies';
 import { composeCalendarSyncMessage } from './composeCalendarSync';
 import { findConflictingEvents, DEFAULT_LOOKAHEAD_MIN } from './calendarConflict';
+import { buildMissionCalendarEvent } from './missionCalendar';
 import { parseDurationToMinutes } from '../utils/duration';
 import { GoogleTokenRepository } from '../repositories/GoogleTokenRepository';
 import { CalendarEventRepository } from '../repositories/CalendarEventRepository';
@@ -45,7 +46,7 @@ import { composeCoaching } from './composeCoaching';
 import { composeNextStepNudge } from './composeNextStep';
 import { composeCompletionCheer } from './composeCompletionCheer';
 import { slotForHour } from './coachingContext';
-import { DEFAULT_USER_ID } from '../types';
+import { DEFAULT_USER_ID, Mission } from '../types';
 import { redisConnection } from '../db/connection';
 
 /** Local midnight for "logged today" lookups. */
@@ -79,6 +80,31 @@ async function sendNextUpNudge(now: Date = new Date()): Promise<void> {
   const blocks = await planService.getTodayPlan(DEFAULT_USER_ID, now);
   const nudge = replyNextUp(nextUpcomingBlock(blocks, now));
   if (nudge) await sendTelegramMessage(nudge).catch(() => null);
+}
+
+const LISTENER_TZ = process.env.TZ || 'Asia/Jakarta';
+
+/**
+ * Mirror a just-started mission onto Google Calendar, unless it is already there
+ * (a same-title event overlaps its start — e.g. it was started from that event).
+ * Best-effort: silent when Google isn't connected, never blocks the mission.
+ */
+async function addMissionToCalendar(mission: Mission, categoryName: string | null): Promise<void> {
+  try {
+    if (!(await googleCalendarService.isConnected(DEFAULT_USER_ID))) return;
+    const start = new Date(mission.started_at);
+    const events = await calendarEventRepo.list(DEFAULT_USER_ID, {
+      from: startOfToday(start).toISOString(),
+      to: new Date(start.getTime() + 24 * 60 * 60_000).toISOString(),
+      limit: 200,
+    });
+    const event = buildMissionCalendarEvent(mission, categoryName, events, LISTENER_TZ);
+    if (!event) return; // already on the calendar
+    await googleCalendarService.createEvent(DEFAULT_USER_ID, event);
+    console.log(`[Telegram Listener] Added mission "${mission.title}" to Google Calendar`);
+  } catch (err) {
+    console.warn(`[Telegram Listener] Could not add mission to calendar: ${(err as Error).message}`);
+  }
 }
 
 // ── Dependency wiring (mirrors server.ts) ────────────────────────────────────
@@ -164,6 +190,7 @@ async function executeAction(action: Action, text: string): Promise<void> {
           action.pending.categoryName
         );
         await sendTelegramMessage(replyStarted(mission, action.pending.categoryName, heldMission));
+        await addMissionToCalendar(mission, action.pending.categoryName);
         console.log(
           `[Telegram Listener] Confirmed and started mission "${mission.title}"` +
             (heldMission ? ` (held "${heldMission.title}")` : '')
@@ -352,6 +379,7 @@ async function runCommand(intent: ParsedIntent): Promise<void> {
           intent.categoryName
         );
         await sendTelegramMessage(replyStarted(mission, intent.categoryName, heldMission));
+        await addMissionToCalendar(mission, intent.categoryName);
         console.log(
           `[Telegram Listener] Started mission "${mission.title}"` +
             (heldMission ? ` (held "${heldMission.title}")` : '')

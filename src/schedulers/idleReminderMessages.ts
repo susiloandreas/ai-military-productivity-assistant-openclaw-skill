@@ -409,6 +409,30 @@ export function buildCalendarIdleMessage(events: CalendarEventRecord[], now: Dat
   return null;
 }
 
+/**
+ * Reminder sent ~5 minutes before a calendar event. When a mission is still
+ * active, it pushes the operator to WRAP IT UP so they're ready for the event;
+ * otherwise it's a plain heads-up.
+ */
+export function buildEventReminderMessage(
+  event: CalendarEventRecord,
+  activeMissionTitle: string | null,
+  minutesUntil: number
+): string {
+  const cat = event.category ? ` [${calEsc(event.category)}]` : '';
+  const head =
+    `🔔 <b>${minutesUntil} MENIT LAGI</b>\n` +
+    `<b>${calEsc(event.title)}</b>${cat} jam ${calClock(new Date(event.starts_at))}.`;
+
+  if (activeMissionTitle) {
+    return (
+      `${head}\n\n` +
+      `Bungkus dulu misi <b>${calEsc(activeMissionTitle)}</b> — ketik <i>"selesai"</i> sebelum agenda mulai.`
+    );
+  }
+  return `${head}\n\nBersiap. Ketik <i>"mulai [aktivitas]"</i> kalau perlu.`;
+}
+
 // ── Habit conflict when starting a mission ───────────────────────────────────
 
 /** Find habits that are due or missed right now when starting a new mission. */

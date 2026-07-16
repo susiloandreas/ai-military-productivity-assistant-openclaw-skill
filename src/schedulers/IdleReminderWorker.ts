@@ -5,6 +5,7 @@ import {
   buildGenericIdleMessage,
   buildHeldMissionReminder,
   buildCalendarIdleMessage,
+  buildEventReminderMessage,
   IDLE_CALENDAR_LOOKAHEAD_MIN,
 } from './idleReminderMessages';
 import { CalendarEventRepository } from '../repositories/CalendarEventRepository';
@@ -24,6 +25,8 @@ const ETA_FOLLOWUP_INTERVAL_MS = 60 * 1000; // 1 minute
 // unanswered mission — independent of the poll interval above, so tightening
 // the poll doesn't speed up the re-ask cadence.
 const ETA_FOLLOWUP_MIN = 5;
+// Send a heads-up this many minutes before each calendar event starts.
+const EVENT_REMINDER_LEAD_MIN = 5;
 
 const missionRepo = new MissionRepository();
 const calendarEventRepo = new CalendarEventRepository();
@@ -155,17 +158,52 @@ async function etaFollowUp(): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  console.log('[Idle Reminder] Worker started — idle check every 15 min, ETA follow-up every 1 min');
+/**
+ * Send a one-time heads-up ~5 minutes before each calendar event starts. When a
+ * mission is still active, it pushes the operator to finish it before the event.
+ * Per-event dedup via notificationRepo.claim, so each event is reminded once.
+ * Runs on the 1-minute cadence; all-day events are skipped.
+ */
+async function eventReminderCheck(): Promise<void> {
+  const now = new Date();
+  const events = await calendarEventRepo.list(DEFAULT_USER_ID, {
+    from: now.toISOString(),
+    to: new Date(now.getTime() + EVENT_REMINDER_LEAD_MIN * 60_000).toISOString(),
+    limit: 50,
+  });
+  if (events.length === 0) return;
 
-  // Run both immediately on startup, then on their own intervals.
+  const active = await missionRepo.getActive(DEFAULT_USER_ID);
+  for (const e of events) {
+    if (e.all_day) continue;
+    const startMs = new Date(e.starts_at).getTime();
+    if (startMs <= now.getTime()) continue; // already started
+    const minutesUntil = Math.max(1, Math.round((startMs - now.getTime()) / 60_000));
+
+    // Claim once per event instance; a lost claim means it was already reminded.
+    const won = await notificationRepo.claim(DEFAULT_USER_ID, 'event_reminder', `evtrem:${e.event_id}`);
+    if (!won) continue;
+
+    await sendTelegramMessage(buildEventReminderMessage(e, active?.title ?? null, minutesUntil)).catch(err =>
+      console.warn(`[Event Reminder] Could not send: ${(err as Error).message}`)
+    );
+    console.log(`[Event Reminder] ${now.toISOString()} — reminded for "${e.title}" (${minutesUntil}m, active: ${active?.title ?? 'none'})`);
+  }
+}
+
+async function main(): Promise<void> {
+  console.log('[Idle Reminder] Worker started — idle check every 15 min, ETA follow-up + event reminders every 1 min');
+
+  // Run immediately on startup, then on their own intervals.
   await check().catch(err => console.error('[Idle Reminder] Check failed:', err));
   await etaFollowUp().catch(err => console.error('[ETA Follow-up] Check failed:', err));
+  await eventReminderCheck().catch(err => console.error('[Event Reminder] Check failed:', err));
   setInterval(() => {
     check().catch(err => console.error('[Idle Reminder] Check failed:', err));
   }, INTERVAL_MS);
   setInterval(() => {
     etaFollowUp().catch(err => console.error('[ETA Follow-up] Check failed:', err));
+    eventReminderCheck().catch(err => console.error('[Event Reminder] Check failed:', err));
   }, ETA_FOLLOWUP_INTERVAL_MS);
 }
 

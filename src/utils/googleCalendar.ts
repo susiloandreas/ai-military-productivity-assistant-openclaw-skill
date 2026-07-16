@@ -183,6 +183,21 @@ export function listRecurringMasters(
   ).then(res => (res.items ?? []).filter(e => e.status !== 'cancelled'));
 }
 
+/** Partially update an event (merges fields; e.g. new end time + description). */
+export function patchEvent(
+  accessToken: string,
+  eventId: string,
+  patch: Partial<CalendarEventInput>,
+  calendarId = 'primary'
+): Promise<CalendarEvent> {
+  return request<CalendarEvent>(
+    accessToken,
+    'PATCH',
+    `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    patch
+  );
+}
+
 /** List upcoming events (timeMin = now), soonest first. */
 export function listUpcomingEvents(
   accessToken: string,

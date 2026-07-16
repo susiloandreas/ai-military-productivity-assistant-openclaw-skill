@@ -14,6 +14,7 @@ import {
   insertEvent,
   listRecurringMasters,
   listUpcomingEvents,
+  patchEvent,
 } from '../utils/googleCalendar';
 
 /** Name of the dedicated calendar whose events are treated as habits. */
@@ -94,6 +95,17 @@ export class GoogleCalendarService {
   async listUpcoming(userId: string, maxResults = 10): Promise<CalendarEvent[]> {
     const token = await this.getAccessToken(userId);
     return listUpcomingEvents(token, maxResults);
+  }
+
+  /** Partially update an event (e.g. end it early with a reason). */
+  async updateEvent(
+    userId: string,
+    eventId: string,
+    patch: Partial<CalendarEventInput>,
+    calendarId = 'primary'
+  ): Promise<CalendarEvent> {
+    const token = await this.getAccessToken(userId);
+    return patchEvent(token, eventId, patch, calendarId);
   }
 
   /**

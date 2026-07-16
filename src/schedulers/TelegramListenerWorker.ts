@@ -84,6 +84,12 @@ async function sendNextUpNudge(now: Date = new Date()): Promise<void> {
 
 const LISTENER_TZ = process.env.TZ || 'Asia/Jakarta';
 
+/** Reason text after a delimiter, e.g. "perpanjang 30m, ke distract" → "ke distract". */
+function reasonAfterDelimiter(text: string): string | null {
+  const m = text.match(/[,:;]\s*(.+)$/);
+  return m && m[1].trim() ? m[1].trim() : null;
+}
+
 /**
  * Mirror a just-started mission onto Google Calendar, unless it is already there
  * (a same-title event overlaps its start — e.g. it was started from that event).
@@ -100,7 +106,8 @@ async function addMissionToCalendar(mission: Mission, categoryName: string | nul
     });
     const event = buildMissionCalendarEvent(mission, categoryName, events, LISTENER_TZ);
     if (!event) return; // already on the calendar
-    await googleCalendarService.createEvent(DEFAULT_USER_ID, event);
+    const created = await googleCalendarService.createEvent(DEFAULT_USER_ID, event);
+    if (created?.id) await missionRepo.setGoogleEvent(mission.id, created.id, 'primary');
     console.log(`[Telegram Listener] Added mission "${mission.title}" to Google Calendar`);
   } catch (err) {
     console.warn(`[Telegram Listener] Could not add mission to calendar: ${(err as Error).message}`);
@@ -262,9 +269,41 @@ async function executeAction(action: Action, text: string): Promise<void> {
     }
 
     case 'extend_expired': {
-      const mission = await missionService.extendExpiredMission(action.missionId, action.extendStr);
-      await sendTelegramMessage(replyExtended(mission));
-      console.log(`[Telegram Listener] Revived expired "${mission.title}" with more time`);
+      // Extend = close the old (expired) mission as FAILED with a reason, end its
+      // calendar event now (with that reason), then start a fresh mission for the
+      // continued work (which gets its own new calendar event).
+      const reason = reasonAfterDelimiter(text);
+      const result = await missionService.resolveExpiredMission(action.missionId, false, reason ?? '');
+
+      // End the old mission's calendar event now, appending the reason.
+      if (result.mission.google_event_id) {
+        await googleCalendarService
+          .updateEvent(
+            DEFAULT_USER_ID,
+            result.mission.google_event_id,
+            {
+              end: { dateTime: new Date().toISOString(), timeZone: LISTENER_TZ },
+              description: `Auto-added from an Ironclaw mission.\nDitutup (tidak selesai): ${reason ?? 'diperpanjang'}`,
+            },
+            result.mission.google_calendar_id ?? 'primary'
+          )
+          .catch(err => console.warn(`[Telegram Listener] Could not end old event: ${(err as Error).message}`));
+      }
+
+      // Start the continuation as a new mission (same title, the requested ETA).
+      const { mission: newMission, heldMission } = await missionService.start(
+        DEFAULT_USER_ID,
+        result.mission.title,
+        action.extendStr,
+        null
+      );
+      await addMissionToCalendar(newMission, null);
+
+      await sendTelegramMessage(replyExpiryResolved(result));
+      await sendTelegramMessage(replyStarted(newMission, null, heldMission));
+      console.log(
+        `[Telegram Listener] Extended expired "${result.mission.title}" → new mission "${newMission.title}"`
+      );
       return;
     }
 

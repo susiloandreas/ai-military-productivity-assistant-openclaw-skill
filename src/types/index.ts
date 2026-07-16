@@ -127,6 +127,9 @@ export interface Mission {
   notes: string | null;
   /** True while waiting for the user's "what did you do?" reply (→ notes). */
   awaiting_notes?: boolean;
+  /** The Google Calendar event this mission was mirrored to, if any. */
+  google_event_id?: string | null;
+  google_calendar_id?: string | null;
   created_at: Date;
 }
 

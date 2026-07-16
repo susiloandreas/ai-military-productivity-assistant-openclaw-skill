@@ -64,6 +64,14 @@ export class MissionRepository {
     return rows[0] ?? null;
   }
 
+  /** Link a mission to the Google Calendar event it was mirrored to. */
+  async setGoogleEvent(id: string, eventId: string, calendarId: string): Promise<void> {
+    await pool.query(
+      `UPDATE missions SET google_event_id = $2, google_calendar_id = $3 WHERE id = $1`,
+      [id, eventId, calendarId]
+    );
+  }
+
   async updateStatus(id: string, status: MissionStatus, extra: Partial<Mission> = {}): Promise<Mission> {
     const fields: string[] = ['status = $2'];
     const values: unknown[] = [id, status];

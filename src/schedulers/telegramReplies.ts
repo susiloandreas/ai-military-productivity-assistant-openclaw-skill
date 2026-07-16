@@ -125,7 +125,9 @@ const ETA_EXPIRED_HEADERS = [
 const RESOLVE_INSTRUCTION =
   'Lapor status-nya (catatan boleh nyusul kalau belum sempat):\n' +
   '✅ <i>selesai</i> — atau langsung <i>selesai, &lt;apa yang kamu kerjakan&gt;</i>\n' +
-  '❌ <i>belum</i> — atau langsung <i>belum, &lt;kenapa / sampai mana&gt;</i>';
+  '❌ <i>belum</i> — atau langsung <i>belum, &lt;kenapa / sampai mana&gt;</i>\n' +
+  '🔁 <i>perpanjang &lt;durasi&gt;</i> — tutup yang ini, lanjut di sesi baru ' +
+  '(mis. <i>perpanjang 30m, ke distract</i>)';
 
 /**
  * Sent by the ETA worker when a mission's timer expires — the user MUST reply

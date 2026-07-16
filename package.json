@@ -13,6 +13,8 @@
     "dev:telegram-listener": "ts-node src/schedulers/TelegramListenerWorker.ts",
     "start:coaching": "node dist/schedulers/CoachingWorker.js",
     "dev:coaching": "ts-node src/schedulers/CoachingWorker.ts",
+    "start:calendar-sync": "node dist/schedulers/CalendarSyncWorker.js",
+    "dev:calendar-sync": "ts-node src/schedulers/CalendarSyncWorker.ts",
     "migrate": "ts-node --esm src/utils/migrate.ts",
     "seed": "ts-node src/utils/seedHabits.ts",
     "seed:schedules": "ts-node src/utils/seedSchedules.ts",

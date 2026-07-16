@@ -23,6 +23,7 @@ case "$role" in
   eta-worker)        exec node dist/schedulers/EtaExpiryWorker.js ;;
   idle-reminder)     exec node dist/schedulers/IdleReminderWorker.js ;;
   coaching)          exec node dist/schedulers/CoachingWorker.js ;;
+  calendar-sync)     exec node dist/schedulers/CalendarSyncWorker.js ;;
   *)
     echo "[entrypoint] Unknown SERVICE_ROLE='$role' — defaulting to web server" >&2
     exec node dist/server.js
